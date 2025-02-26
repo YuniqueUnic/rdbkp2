@@ -1,7 +1,6 @@
 use anyhow::Result;
 use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use bollard::Docker;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 
@@ -91,7 +90,7 @@ impl DockerClient {
                 });
             } else {
                 warn!(
-                    mount_type = ?mount.type_,
+                    mount_type = ?mount.typ,
                     "Skipping mount point due to missing source or destination"
                 );
             }

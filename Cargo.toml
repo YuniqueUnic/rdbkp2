@@ -17,7 +17,7 @@ clap = { version = "4.5.1", features = ["derive"] }
 # CLI 交互
 dialoguer = "0.11.0"
 # Docker API
-bollard = "0.15.0"
+bollard = { version = "0.18", features = ["ssl"] }
 # 配置文件
 toml = "0.8.10"
 serde = { version = "1.0", features = ["derive"] }
@@ -26,16 +26,17 @@ tar = "0.4.40"
 xz2 = "0.1.7"
 # 错误处理
 anyhow = "1.0.80"
-thiserror = "1.0.57"
+thiserror = "2"
 # 异步运行时
 tokio = { version = "1.36.0", features = ["full"] }
 # 日志
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 # 文件系统操作
 walkdir = "2.4.0"
 # 时间处理
 chrono = "0.4.34"
+winapi = { version = "0.3.9", features = ["winerror"] }
 
 [profile.release]
 lto = true
