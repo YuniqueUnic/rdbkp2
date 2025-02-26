@@ -2,6 +2,14 @@
 name = "rdbkp2"
 version = "0.1.0"
 edition = "2021"
+authors = ["<AUTHOR_NAME> <<AUTHOR_EMAIL>>"]
+description = "A CLI tool for backing up and restoring Docker container data"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/<GITHUB_USERNAME>/rdbkp2"
+repository = "https://github.com/<GITHUB_USERNAME>/rdbkp2"
+keywords = ["docker", "backup", "cli", "container", "volume"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 # CLI 参数解析
@@ -28,3 +36,10 @@ tracing-subscriber = "0.3.18"
 walkdir = "2.4.0"
 # 时间处理
 chrono = "0.4.34"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
+opt-level = 3

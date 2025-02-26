@@ -1,0 +1,59 @@
+# 默认显示帮助信息
+default:
+    @just --list
+
+# 安装依赖工具
+setup:
+    cargo install cargo-edit cargo-watch cargo-release just
+
+# 检查代码格式
+fmt:
+    cargo fmt --all -- --check
+
+# 运行 clippy 检查
+lint:
+    cargo clippy --all-targets --all-features -- -D warnings
+
+# 运行测试
+test:
+    cargo test --all-features
+
+# 构建发布版本
+build:
+    cargo build --release
+
+# 运行所有检查（格式、lint、测试）
+check: fmt lint test
+
+# 清理构建产物
+clean:
+    cargo clean
+
+# 启动开发模式（代码变更自动重新编译）
+dev:
+    cargo watch -x run
+
+# 创建新的发布版本
+# 用法: just release [major|minor|patch]
+release level:
+    cargo release {{level}} --execute
+
+# 发布到 crates.io
+publish:
+    cargo publish
+
+# 生成 CHANGELOG
+changelog:
+    git cliff -o CHANGELOG.md
+
+# 安装到本地系统
+install:
+    cargo install --path .
+
+# 运行带有调试日志的程序
+run-debug *args:
+    RUST_LOG=debug cargo run -- {{args}}
+
+# 运行带有跟踪日志的程序
+run-trace *args:
+    RUST_LOG=trace cargo run -- {{args}} 
