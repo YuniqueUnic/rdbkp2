@@ -6,8 +6,8 @@ mod utils;
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::io;
-use tracing::{info, Level};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing::{Level, info};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

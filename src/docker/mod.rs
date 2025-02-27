@@ -1,6 +1,6 @@
 use anyhow::Result;
-use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use bollard::Docker;
+use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 
