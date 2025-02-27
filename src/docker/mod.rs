@@ -131,6 +131,7 @@ mod tests {
     use crate::{DOCKER_COMPOSE_CMD, tests::get_docker_compose_path};
     use std::{process::Command, time::Duration};
     use tokio::{self, time::sleep};
+    use tracing::debug;
 
     #[tokio::test]
     async fn test_docker_client_creation() -> Result<()> {
@@ -148,29 +149,43 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_container_volumes() -> Result<()> {
+        crate::init_test_log();
         let client = DockerClient::new().await?;
         let docker_dir = get_docker_compose_path();
 
+        debug!("Docker directory: {:?}", docker_dir);
+        assert!(docker_dir.exists(), "Docker directory does not exist");
+        assert!(
+            docker_dir.join("docker-compose.yaml").exists(),
+            "docker-compose.yaml not found"
+        );
+
         // 确保测试容器运行中
-        Command::new(DOCKER_COMPOSE_CMD)
-            .current_dir(&docker_dir) // 设置工作目录
+        let status = Command::new(DOCKER_COMPOSE_CMD)
+            .current_dir(&docker_dir)
             .args(&["-f", "docker-compose.yaml", "up", "-d"])
             .status()?;
+
+        if !status.success() {
+            return Err(anyhow::anyhow!("Failed to start docker container"));
+        }
 
         sleep(Duration::from_secs(5)).await;
 
         let containers = client.list_containers().await?;
+        debug!("Found containers: {:?}", containers);
+
         let sim_server = containers
             .iter()
             .find(|c| c.name == "sim-server")
-            .expect("sim-server container not found");
+            .ok_or_else(|| anyhow::anyhow!("sim-server container not found"))?;
 
         let volumes = client.get_container_volumes(&sim_server.id).await?;
         assert!(!volumes.is_empty());
 
         // 清理
         Command::new(DOCKER_COMPOSE_CMD)
-            .current_dir(&docker_dir) // 设置工作目录
+            .current_dir(&docker_dir)
             .args(&["-f", "docker-compose.yaml", "down"])
             .status()?;
 

@@ -54,7 +54,7 @@ async fn test_backup_restore_workflow() -> Result<()> {
         .status()?;
 
     // 修改配置
-    let config_path = PathBuf::from(&docker_dir).join("config.yaml");
+    let config_path = PathBuf::from(&docker_dir).join("config.ini");
     let mut config_content = std::fs::read_to_string(&config_path)?;
     config_content =
         config_content.replace("Welcome to SimServer!", "Welcome to Updated SimServer!");
