@@ -2,6 +2,7 @@ use anyhow::Result;
 use bollard::Docker;
 use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use std::path::PathBuf;
+
 use tracing::{debug, error, info, warn};
 
 pub struct DockerClient {
@@ -122,4 +123,58 @@ pub struct VolumeInfo {
     pub source: PathBuf,
     pub destination: PathBuf,
     pub name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{process::Command, time::Duration};
+
+    use crate::DOCKER_COMPOSE_CMD;
+
+    use super::*;
+    use tokio::{self, time::sleep};
+
+    #[tokio::test]
+    async fn test_docker_client_creation() -> Result<()> {
+        let client = DockerClient::new().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_list_containers() -> Result<()> {
+        let client = DockerClient::new().await?;
+        let containers = client.list_containers().await?;
+        assert!(containers.len() >= 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_container_volumes() -> Result<()> {
+        let client = DockerClient::new().await?;
+
+        println!("{:?}", Command::new("pwd").output()?);
+
+        // 确保测试容器运行中
+        Command::new(DOCKER_COMPOSE_CMD)
+            .args(&["-f", "docker/docker-compose.yaml", "up", "-d"])
+            .status()?;
+
+        sleep(Duration::from_secs(5)).await;
+
+        let containers = client.list_containers().await?;
+        let sim_server = containers
+            .iter()
+            .find(|c| c.name == "sim-server")
+            .expect("sim-server container not found");
+
+        let volumes = client.get_container_volumes(&sim_server.id).await?;
+        assert!(!volumes.is_empty());
+
+        // 清理
+        Command::new(DOCKER_COMPOSE_CMD)
+            .args(&["-f", "docker/docker-compose.yaml", "down"])
+            .status()?;
+
+        Ok(())
+    }
 }

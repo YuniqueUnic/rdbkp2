@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  sim-server:
+    build: .
+    container_name: sim-server
+    ports:
+      - "8666:8666"
+    volumes:
+      - ./data:/app/data
+      - ./simServer.py:/app/simServer.py
+      - ./simServerDepend.py:/app/simServerDepend.py
+      - ./config.yaml:/app/config.yaml
+    restart: unless-stopped
+    # Resource limits - 移除 memory 相关限制以避免 swap 警告
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+        reservations:
+          cpus: '0.25'
+    # Logging configuration  
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Health check
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8666" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

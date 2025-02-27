@@ -126,3 +126,62 @@ pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::prelude::*;
+    use predicates::prelude::*;
+
+    #[test]
+    fn test_create_timestamp_filename() {
+        let filename = create_timestamp_filename("test", ".txt");
+        assert!(filename.starts_with("test_"));
+        assert!(filename.ends_with(".txt"));
+        assert_eq!(filename.len(), 24); // test_YYYYMMDD_HHMMSS.txt
+    }
+
+    #[test]
+    fn test_ensure_dir_exists() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let test_dir = temp.child("test_dir");
+
+        ensure_dir_exists(&test_dir)?;
+        test_dir.assert(predicate::path::exists());
+
+        // 测试重复创建
+        ensure_dir_exists(&test_dir)?;
+        test_dir.assert(predicate::path::exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compress_and_extract() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+
+        // 创建测试文件
+        let source_dir = temp.child("source");
+        source_dir.create_dir_all()?;
+
+        let test_file = source_dir.child("test.txt");
+        test_file.write_str("Hello, World!")?;
+
+        // 压缩
+        let archive = temp.child("archive.tar.xz");
+        compress_directory(&source_dir, &archive, &[])?;
+        archive.assert(predicate::path::exists());
+
+        // 解压
+        let extract_dir = temp.child("extract");
+        extract_dir.create_dir_all()?;
+        extract_archive(&archive, &extract_dir)?;
+
+        // 验证
+        let extracted_file = extract_dir.child("test.txt");
+        extracted_file.assert(predicate::path::exists());
+        extracted_file.assert(predicate::str::contains("Hello, World!"));
+
+        Ok(())
+    }
+}

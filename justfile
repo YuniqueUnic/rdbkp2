@@ -1,5 +1,6 @@
-# 使用 PowerShell 替代 sh:
-set shell := ["pwsh", "-c"]
+# 根据操作系统自动设置 shell
+set windows-shell := ["pwsh", "-c"]
+set shell := ["bash", "-c"]
 
 # 默认显示帮助信息
 default:
@@ -8,9 +9,9 @@ default:
 # 安装依赖工具
 setup:
     cargo install cargo-edit cargo-watch cargo-release
-    ; Already installed that those commands can be run directly
-    ; so, no need to install just
-    ; cargo install just
+    # Already installed that those commands can be run directly
+    # so, no need to install just
+    # cargo install just
 
 # 检查代码格式
 fmt:
@@ -62,4 +63,4 @@ run-debug *args:
 
 # 运行带有跟踪日志的程序
 run-trace *args:
-    RUST_LOG=trace cargo run -- {{args}} 
+    RUST_LOG=trace cargo run -- {{args}}
