@@ -7,7 +7,10 @@ default:
 
 # 安装依赖工具
 setup:
-    cargo install cargo-edit cargo-watch cargo-release just
+    cargo install cargo-edit cargo-watch cargo-release
+    ; Already installed that those commands can be run directly
+    ; so, no need to install just
+    ; cargo install just
 
 # 检查代码格式
 fmt:
