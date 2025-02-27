@@ -1,5 +1,11 @@
 #!/bin/bash
+
+# zip -r data.zip data && tar -czf data.tar.gz data && 7z a -t7z -m0=lzma2 -mx=9 data.7z data
+# 常用打包压缩命令
+
 set -e  # 遇到错误立即退出
+
+
 
 # 颜色输出函数
 GREEN='\033[0;32m'
