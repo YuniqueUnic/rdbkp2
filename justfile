@@ -1,3 +1,6 @@
+# 使用 PowerShell 替代 sh:
+set shell := ["pwsh", "-c"]
+
 # 默认显示帮助信息
 default:
     @just --list

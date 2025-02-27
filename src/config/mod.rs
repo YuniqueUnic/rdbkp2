@@ -36,6 +36,7 @@ impl Default for Config {
     }
 }
 
+#[allow(dead_code)]
 impl Config {
     /// 从文件加载配置
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {

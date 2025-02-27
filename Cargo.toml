@@ -14,6 +14,7 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 # CLI 参数解析
 clap = { version = "4.5.1", features = ["derive"] }
+clap_complete = "4.5.1"
 # CLI 交互
 dialoguer = "0.11.0"
 # Docker API

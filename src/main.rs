@@ -4,7 +4,8 @@ mod docker;
 mod utils;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use std::io;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -15,11 +16,19 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Clone, ValueEnum, Debug)]
+enum Shell {
+    Bash,
+    Fish,
+    Zsh,
+    PowerShell,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// 备份 Docker 容器数据
     Backup {
-        /// 容器名称或ID
+        /// 容器名称或 ID
         #[arg(short, long)]
         container: Option<String>,
 
@@ -34,7 +43,7 @@ enum Commands {
 
     /// 恢复 Docker 容器数据
     Restore {
-        /// 容器名称或ID
+        /// 容器名称或 ID
         #[arg(short, long)]
         container: Option<String>,
 
@@ -49,6 +58,13 @@ enum Commands {
 
     /// 列出可用的 Docker 容器
     List,
+
+    /// 生成命令行补全脚本
+    Completions {
+        /// Shell 类型
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[tokio::main]
@@ -93,6 +109,45 @@ async fn main() -> Result<()> {
         Commands::List => {
             info!("Executing list command");
             commands::list_containers().await?;
+        }
+        Commands::Completions { shell } => {
+            info!(?shell, "Generating shell completions");
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            match shell {
+                Shell::Bash => {
+                    clap_complete::generate(
+                        clap_complete::shells::Bash,
+                        &mut cmd,
+                        &name,
+                        &mut io::stdout(),
+                    );
+                }
+                Shell::Fish => {
+                    clap_complete::generate(
+                        clap_complete::shells::Fish,
+                        &mut cmd,
+                        &name,
+                        &mut io::stdout(),
+                    );
+                }
+                Shell::Zsh => {
+                    clap_complete::generate(
+                        clap_complete::shells::Zsh,
+                        &mut cmd,
+                        &name,
+                        &mut io::stdout(),
+                    );
+                }
+                Shell::PowerShell => {
+                    clap_complete::generate(
+                        clap_complete::shells::PowerShell,
+                        &mut cmd,
+                        &name,
+                        &mut io::stdout(),
+                    );
+                }
+            }
         }
     }
 

@@ -5,7 +5,7 @@ use crate::utils::{
 };
 use anyhow::Result;
 use dialoguer::{Confirm, Input, Select};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
 pub async fn list_containers() -> Result<()> {
@@ -66,7 +66,14 @@ pub async fn backup(
             .interact_text()?;
         PathBuf::from(input)
     } else {
-        PathBuf::from(output.unwrap())
+        match output {
+            Some(output) => PathBuf::from(output),
+            None => {
+                error!("Output directory is required");
+                println!("Output directory is required");
+                return Ok(());
+            }
+        }
     };
 
     // 确保输出目录存在
@@ -132,7 +139,14 @@ pub async fn restore(
             .interact_text()?;
         PathBuf::from(input)
     } else {
-        PathBuf::from(input.unwrap())
+        match input {
+            Some(input) => PathBuf::from(input),
+            None => {
+                error!("Backup file path is required");
+                println!("Backup file path is required");
+                return Ok(());
+            }
+        }
     };
 
     // 确认恢复
@@ -223,7 +237,7 @@ async fn get_container_by_name_or_id(
 async fn backup_volume(
     container: &ContainerInfo,
     volume: &VolumeInfo,
-    output_dir: &PathBuf,
+    output_dir: &Path,
 ) -> Result<()> {
     info!(
         container_name = ?container.name,

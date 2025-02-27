@@ -1,8 +1,7 @@
 use anyhow::Result;
 use std::fs::File;
-use std::path::{Path, PathBuf};
-use tar::Builder;
-use tracing::{debug, error, info, warn};
+use std::path::Path;
+use tracing::{debug, error, info};
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
@@ -27,7 +26,7 @@ pub fn compress_directory<P: AsRef<Path>>(
 
     debug!("Creating XZ encoder with compression level 9");
     let xz = XzEncoder::new(file, 9);
-    let mut tar = Builder::new(xz);
+    let mut tar = tar::Builder::new(xz);
 
     debug!(
         ?exclude_patterns,
