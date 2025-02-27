@@ -5,6 +5,8 @@
         "dialoguer",
         "pwsh",
         "rdbkp",
-        "walkdir"
+        "walkdir",
+        "winapi",
+        "winerror"
     ]
 }
