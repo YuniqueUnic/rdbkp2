@@ -10,7 +10,7 @@ services:
       - ./data:/app/data
       - ./simServer.py:/app/simServer.py
       - ./simServerDepend.py:/app/simServerDepend.py
-      - ./config.yaml:/app/config.yaml
+      - ./config.ini:/app/config.ini
     restart: unless-stopped
     # Resource limits - 移除 memory 相关限制以避免 swap 警告
     deploy:

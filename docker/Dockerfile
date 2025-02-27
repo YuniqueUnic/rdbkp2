@@ -4,11 +4,8 @@ FROM python:3.9-alpine
 # Set working directory
 WORKDIR /app
 
-# Install required packages
-RUN pip install pyyaml
-
 # Copy the Python scripts and config
-COPY simServer.py simServerDepend.py config.yaml ./
+COPY simServer.py simServerDepend.py config.ini ./
 
 # Create data directory
 RUN mkdir data

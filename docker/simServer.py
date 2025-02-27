@@ -4,28 +4,44 @@ from datetime import datetime
 from simServerDepend import ServerConfig
 import json
 from urllib.parse import urlparse, parse_qs
+import logging
+from logging.handlers import RotatingFileHandler
+
+class CustomLogFormatter(logging.Formatter):
+    def format(self, record):
+        record.ip = getattr(record, 'ip', '-')
+        record.method = getattr(record, 'method', '-')
+        record.path = getattr(record, 'path', '-')
+        record.status = getattr(record, 'status', '-')
+        return super().format(record)
 
 class RequestHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self.config = ServerConfig()
+        self._setup_logging()
         super().__init__(*args, **kwargs)
 
+    def _setup_logging(self):
+        os.makedirs(os.path.dirname(self.config.log_file), exist_ok=True)
+        formatter = CustomLogFormatter(self.config.log_format)
+        handler = RotatingFileHandler(
+            self.config.log_file,
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=3
+        )
+        handler.setFormatter(formatter)
+        self.logger = logging.getLogger('simserver')
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+
     def log_request_to_file(self, status=200):
-        # Create data directory if it doesn't exist
-        os.makedirs('./data', exist_ok=True)
-        
-        # Log request details
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        log_entry = self.config.log_format.format(
-            timestamp=timestamp,
-            ip=self.client_address[0],
-            method=self.command,
-            path=self.path,
-            status=status
-        ) + "\n"
-        
-        with open(self.config.log_file, 'a') as f:
-            f.write(log_entry)
+        extra = {
+            'ip': self.client_address[0],
+            'method': self.command,
+            'path': self.path,
+            'status': status
+        }
+        self.logger.info('Request processed', extra=extra)
 
     def send_json_response(self, data, status=200):
         self.send_response(status)
@@ -51,7 +67,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             # 健康检查端点
             self.send_json_response({'status': 'healthy'})
         else:
-            # 默认HTML响应
+            # 默认 HTML 响应
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
