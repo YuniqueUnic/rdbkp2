@@ -13,6 +13,14 @@ setup:
     # so, no need to install just
     # cargo install just
 
+# ai 生成 git commit message 并且 commit
+git-commit:
+    git add . && git commit -m "$(git status | aichat -r git)"
+
+# ai 生成 git commit message 并且 push
+git-push:
+    git add . && git commit -m "$(git status | aichat -r git)" && git push
+
 # 检查代码格式
 fmt:
     cargo fmt --all -- --check
