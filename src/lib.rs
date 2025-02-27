@@ -12,6 +12,8 @@ use std::io;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
+pub(crate) const DOCKER_CMD: &str = "docker";
+
 #[cfg(target_os = "macos")]
 pub(crate) const DOCKER_COMPOSE_CMD: &str = "docker-compose";
 

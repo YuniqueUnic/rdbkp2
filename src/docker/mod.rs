@@ -128,9 +128,12 @@ pub struct VolumeInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DOCKER_COMPOSE_CMD, tests::get_docker_compose_path};
-    use std::{process::Command, time::Duration};
-    use tokio::{self, time::sleep};
+    use crate::{
+        DOCKER_COMPOSE_CMD,
+        tests::{check_docker_compose, get_docker_compose_path},
+    };
+    use std::time::Duration;
+    use tokio::{self, process::Command, time::sleep};
     use tracing::debug;
 
     #[tokio::test]
@@ -150,6 +153,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_container_volumes() -> Result<()> {
         crate::init_test_log();
+
+        // 首先检查 docker compose 命令是否可用
+        check_docker_compose()?;
+
         let client = DockerClient::new().await?;
         let docker_dir = get_docker_compose_path();
 
@@ -160,16 +167,49 @@ mod tests {
             "docker-compose.yaml not found"
         );
 
-        // 确保测试容器运行中
-        let status = Command::new(DOCKER_COMPOSE_CMD)
-            .current_dir(&docker_dir)
-            .args(&["-f", "docker-compose.yaml", "up", "-d"])
-            .status()?;
+        let docker_compose_file = docker_dir.join("docker-compose.yaml");
+        assert!(
+            docker_compose_file.exists(),
+            "docker-compose.yaml not found"
+        );
 
-        if !status.success() {
+        // 先确保清理旧的容器
+        debug!("Cleaning up old containers...");
+        let cleanup = Command::new(DOCKER_COMPOSE_CMD)
+            .current_dir(&docker_dir)
+            .args(&["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
+            .output()
+            .await?;
+
+        if !cleanup.status.success() {
+            debug!(
+                "Cleanup stderr: {}",
+                String::from_utf8_lossy(&cleanup.stderr)
+            );
+            return Err(anyhow::anyhow!("Failed to cleanup old containers"));
+        }
+
+        // 确保测试容器运行中
+        debug!("Starting containers...");
+        let output = Command::new(DOCKER_COMPOSE_CMD)
+            .current_dir(&docker_dir)
+            .args(&["-f", &docker_compose_file.to_string_lossy(), "up", "-d"])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            debug!(
+                "Docker compose stderr: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            debug!(
+                "Docker compose stdout: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
             return Err(anyhow::anyhow!("Failed to start docker container"));
         }
 
+        debug!("Waiting for containers to start...");
         sleep(Duration::from_secs(5)).await;
 
         let containers = client.list_containers().await?;
@@ -180,14 +220,26 @@ mod tests {
             .find(|c| c.name == "sim-server")
             .ok_or_else(|| anyhow::anyhow!("sim-server container not found"))?;
 
+        debug!("Found sim-server container: {:?}", sim_server);
         let volumes = client.get_container_volumes(&sim_server.id).await?;
+        debug!("Found volumes: {:?}", volumes);
         assert!(!volumes.is_empty());
 
         // 清理
-        Command::new(DOCKER_COMPOSE_CMD)
+        debug!("Cleaning up test environment...");
+        let cleanup = Command::new(DOCKER_COMPOSE_CMD)
             .current_dir(&docker_dir)
-            .args(&["-f", "docker-compose.yaml", "down"])
-            .status()?;
+            .args(&["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
+            .output()
+            .await?;
+
+        if !cleanup.status.success() {
+            debug!(
+                "Final cleanup stderr: {}",
+                String::from_utf8_lossy(&cleanup.stderr)
+            );
+            return Err(anyhow::anyhow!("Failed to cleanup test environment"));
+        }
 
         Ok(())
     }

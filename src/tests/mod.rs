@@ -1,4 +1,4 @@
-use crate::DOCKER_COMPOSE_CMD;
+use crate::{DOCKER_CMD, DOCKER_COMPOSE_CMD};
 use anyhow::Result;
 use assert_fs::prelude::*;
 use std::process::Command;
@@ -8,6 +8,22 @@ use tokio::time::{Duration, sleep};
 pub(crate) fn get_docker_compose_path() -> PathBuf {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get manifest directory");
     PathBuf::from(manifest_dir).join("docker")
+}
+
+// 检查命令是否存在
+pub(crate) fn check_docker_compose() -> Result<()> {
+    let output = Command::new(DOCKER_CMD)
+        .arg("--version")
+        .output()
+        .map_err(|_| {
+            anyhow::anyhow!("docker compose command not found. Please install Docker Compose.")
+        })?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("Failed to run docker compose command"));
+    }
+
+    Ok(())
 }
 
 #[tokio::test]
