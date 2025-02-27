@@ -127,11 +127,9 @@ pub struct VolumeInfo {
 
 #[cfg(test)]
 mod tests {
-    use std::{process::Command, time::Duration};
-
-    use crate::DOCKER_COMPOSE_CMD;
-
     use super::*;
+    use crate::{DOCKER_COMPOSE_CMD, tests::get_docker_compose_path};
+    use std::{process::Command, time::Duration};
     use tokio::{self, time::sleep};
 
     #[tokio::test]
@@ -151,12 +149,12 @@ mod tests {
     #[tokio::test]
     async fn test_get_container_volumes() -> Result<()> {
         let client = DockerClient::new().await?;
-
-        println!("{:?}", Command::new("pwd").output()?);
+        let docker_dir = get_docker_compose_path();
 
         // 确保测试容器运行中
         Command::new(DOCKER_COMPOSE_CMD)
-            .args(&["-f", "docker/docker-compose.yaml", "up", "-d"])
+            .current_dir(&docker_dir) // 设置工作目录
+            .args(&["-f", "docker-compose.yaml", "up", "-d"])
             .status()?;
 
         sleep(Duration::from_secs(5)).await;
@@ -172,7 +170,8 @@ mod tests {
 
         // 清理
         Command::new(DOCKER_COMPOSE_CMD)
-            .args(&["-f", "docker/docker-compose.yaml", "down"])
+            .current_dir(&docker_dir) // 设置工作目录
+            .args(&["-f", "docker-compose.yaml", "down"])
             .status()?;
 
         Ok(())
