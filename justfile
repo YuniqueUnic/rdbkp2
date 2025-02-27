@@ -13,11 +13,11 @@ setup:
     # so, no need to install just
     # cargo install just
 
-# ai 生成 git commit message 并且 commit
+# ai 生成 git commit message 并且 commit. 需要先登录 github
 git-commit:
     git add . && git commit -m "$(git status | aichat -r git)"
 
-# ai 生成 git commit message 并且 push
+# ai 生成 git commit message 并且 push. 需要先登录 github
 git-push:
     git add . && git commit -m "$(git status | aichat -r git)" && git push
 
