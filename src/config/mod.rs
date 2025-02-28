@@ -57,18 +57,16 @@ impl Default for Config {
 impl Config {
     /// 获取全局配置实例
     pub fn global() -> Result<Config> {
-        let config = CONFIG
+        let config_lock = CONFIG
             .get()
-            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?
-            .read()
-            .map_err(|e| {
-                error!(?e, "Failed to acquire read lock on config");
-                anyhow::anyhow!("Failed to read config: {}", e)
-            })?
-            .clone()
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?;
 
-        Ok(config)
+        let config = config_lock.read().map_err(|e| {
+            error!(?e, "Failed to acquire read lock on config");
+            anyhow::anyhow!("Failed to read config: {}", e)
+        })?;
+
+        Ok(config.clone().unwrap_or_default())
     }
 
     /// 初始化全局配置
@@ -133,25 +131,18 @@ impl Config {
     where
         F: FnOnce(&mut Config),
     {
-        let mut cfg = CONFIG
+        let config_lock = CONFIG
             .get()
-            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?
-            .read()
-            .map_err(|e| {
-                error!(?e, "Failed to acquire read lock on config");
-                anyhow::anyhow!("Failed to read config: {}", e)
-            })?
-            .clone()
             .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?;
 
-        f(&mut cfg);
+        let mut writer = config_lock.write().map_err(|e| {
+            error!(?e, "Failed to acquire write lock on config");
+            anyhow::anyhow!("Failed to write config: {}", e)
+        })?;
 
-        let res = CONFIG.set(Arc::new(RwLock::new(Some(cfg))));
-
-        if res.is_err() {
-            error!("Failed to set config");
-            anyhow::bail!("Failed to set config")
-        }
+        let mut config = writer.clone().unwrap_or_default();
+        f(&mut config);
+        *writer = Some(config);
 
         debug!("Global config updated");
         Ok(())
