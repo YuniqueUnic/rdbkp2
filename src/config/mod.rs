@@ -1,11 +1,15 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+use tracing::{debug, error, info};
 
-#[derive(Debug, Serialize, Deserialize)]
+static CONFIG: OnceLock<Arc<RwLock<Option<Config>>>> = OnceLock::new();
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     /// 备份文件的默认输出目录
     pub backup_dir: PathBuf,
@@ -16,12 +20,13 @@ pub struct Config {
     /// Docker 相关配置
     pub docker: DockerConfig,
 }
-#[derive(Debug, Serialize, Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupMapper {
     pub backup_mapping_path: PathBuf,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DockerConfig {
     /// Docker daemon 的地址
     pub host: String,
@@ -49,34 +54,116 @@ impl Default for Config {
     }
 }
 
-#[allow(dead_code)]
 impl Config {
+    /// 获取全局配置实例
+    pub fn global() -> Result<Config> {
+        let config = CONFIG
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?
+            .read()
+            .map_err(|e| {
+                error!(?e, "Failed to acquire read lock on config");
+                anyhow::anyhow!("Failed to read config: {}", e)
+            })?
+            .clone()
+            .unwrap_or_default();
+
+        Ok(config)
+    }
+
+    /// 初始化全局配置
+    pub fn init(config: Config) -> Result<()> {
+        let res = CONFIG.set(Arc::new(RwLock::new(Some(config))));
+        if res.is_err() {
+            error!("Failed to set config");
+            anyhow::bail!("Failed to set config")
+        }
+        debug!("Global config initialized");
+        Ok(())
+    }
+
+    /// 从文件加载配置并初始化全局实例
+    pub fn init_from_file<P: AsRef<Path>>(path: P) -> Result<()> {
+        let config = Self::load_from_file(path)?;
+        Self::init(config)
+    }
+
     /// 从文件加载配置
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        Ok(toml::from_str(&content)?)
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            error!(?e, path = ?path.as_ref(), "Failed to read config file");
+            e
+        })?;
+        let config: Config = toml::from_str(&content).map_err(|e| {
+            error!(?e, "Failed to parse config file");
+            e
+        })?;
+        debug!(?config, "Config loaded from file");
+        Ok(config)
     }
 
     /// 保存配置到文件
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+        let content = toml::to_string_pretty(self).map_err(|e| {
+            error!(?e, "Failed to serialize config");
+            e
+        })?;
+        std::fs::write(path.as_ref(), content).map_err(|e| {
+            error!(?e, path = ?path.as_ref(), "Failed to write config file");
+            e
+        })?;
+        debug!(path = ?path.as_ref(), "Config saved to file");
         Ok(())
     }
 
     /// 确保备份目录存在
     pub fn ensure_backup_dir(&self) -> Result<()> {
         if !self.backup_dir.exists() {
-            std::fs::create_dir_all(&self.backup_dir)?;
+            std::fs::create_dir_all(&self.backup_dir).map_err(|e| {
+                error!(?e, path = ?self.backup_dir, "Failed to create backup directory");
+                e
+            })?;
+            info!(path = ?self.backup_dir, "Backup directory created");
         }
+        Ok(())
+    }
+
+    /// 更新全局配置
+    pub fn update<F>(&self, f: F) -> Result<()>
+    where
+        F: FnOnce(&mut Config),
+    {
+        let mut cfg = CONFIG
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?
+            .read()
+            .map_err(|e| {
+                error!(?e, "Failed to acquire read lock on config");
+                anyhow::anyhow!("Failed to read config: {}", e)
+            })?
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?;
+
+        f(&mut cfg);
+
+        let res = CONFIG.set(Arc::new(RwLock::new(Some(cfg))));
+
+        if res.is_err() {
+            error!("Failed to set config");
+            anyhow::bail!("Failed to set config")
+        }
+
+        debug!("Global config updated");
         Ok(())
     }
 }
 
 #[allow(dead_code)]
+
 impl BackupMapper {
     pub fn load_mappings(&self) -> Result<HashMap<String, String>> {
         let mappings = mapping::load_mappings(&self.backup_mapping_path)?;
+        debug!(?mappings, "Backup mappings loaded");
         Ok(mappings)
     }
 
@@ -101,21 +188,34 @@ impl BackupMapper {
 
 #[allow(dead_code)]
 mod mapping {
-    use std::{collections::HashMap, path::PathBuf};
-
-    use anyhow::Result;
+    use super::*;
 
     pub fn load_mappings(backup_mapping_path: &PathBuf) -> Result<HashMap<String, String>> {
-        let content = std::fs::read_to_string(backup_mapping_path)?;
-        Ok(toml::from_str(&content)?)
+        let content = std::fs::read_to_string(backup_mapping_path).map_err(|e| {
+            error!(?e, path = ?backup_mapping_path, "Failed to read mapping file");
+            e
+        })?;
+        let mappings: HashMap<String, String> = toml::from_str(&content).map_err(|e| {
+            error!(?e, "Failed to parse mapping file");
+            e
+        })?;
+        debug!(?mappings, "Mappings loaded");
+        Ok(mappings)
     }
 
     pub fn save_mappings(
         backup_mapping_path: &PathBuf,
         mappings: &HashMap<String, String>,
     ) -> Result<()> {
-        let content = toml::to_string_pretty(mappings)?;
-        std::fs::write(backup_mapping_path.clone(), content)?;
+        let content = toml::to_string_pretty(mappings).map_err(|e| {
+            error!(?e, "Failed to serialize mappings");
+            e
+        })?;
+        std::fs::write(backup_mapping_path, content).map_err(|e| {
+            error!(?e, path = ?backup_mapping_path, "Failed to write mapping file");
+            e
+        })?;
+        debug!(path = ?backup_mapping_path, "Mappings saved");
         Ok(())
     }
 
@@ -125,10 +225,10 @@ mod mapping {
     ) -> Result<()> {
         let mut existing_mapping = load_mappings(backup_mapping_path)?;
         for (key, value) in mapping {
-            existing_mapping.insert(key, value);
+            existing_mapping.insert(key.clone(), value.clone());
+            debug!(key = ?key, value = ?value, "Added mapping");
         }
-        save_mappings(backup_mapping_path, &existing_mapping)?;
-        Ok(())
+        save_mappings(backup_mapping_path, &existing_mapping)
     }
 
     pub fn remove_mappings(
@@ -138,12 +238,59 @@ mod mapping {
         let mut existing_mapping = load_mappings(backup_mapping_path)?;
         let mut removed_mappings = Vec::new();
         for key in keys {
-            let value = existing_mapping.remove(&key);
-            if let Some(value) = value {
-                removed_mappings.push((key, value));
+            if let Some(value) = existing_mapping.remove(&key) {
+                removed_mappings.push((key.clone(), value.clone()));
+                debug!(key = ?key, value = ?value, "Removed mapping");
             }
         }
         save_mappings(backup_mapping_path, &existing_mapping)?;
         Ok(removed_mappings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::TempDir;
+
+    #[test]
+    fn test_config_singleton() -> Result<()> {
+        // 创建测试配置
+        let test_config = Config::default();
+
+        // 初始化全局配置
+        Config::init(test_config.clone())?;
+
+        // 获取全局配置并验证
+        let global_config = Config::global()?;
+        assert_eq!(global_config.backup_dir, PathBuf::from("./backups"));
+
+        // 测试更新配置
+        println!("Updating config");
+        Config::global()?.update(|config| {
+            config.backup_dir = PathBuf::from("./new_backups");
+        })?;
+
+        // 验证更新后的配置
+        let updated_config = Config::global()?;
+        assert_eq!(updated_config.backup_dir, PathBuf::from("./new_backups"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_config_file_operations() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let config_path = temp_dir.path().join("config.toml");
+
+        // 创建并保存配置
+        let config = Config::default();
+        config.save_to_file(&config_path)?;
+
+        // 从文件加载配置
+        let loaded_config = Config::load_from_file(&config_path)?;
+        assert_eq!(loaded_config.backup_dir, PathBuf::from("./backups"));
+
+        Ok(())
     }
 }

@@ -109,6 +109,7 @@ pub async fn backup(
         let input: String = Input::new()
             .with_prompt("Backup output directory")
             .default(default_dir.to_string())
+            .allow_empty(false)
             .interact_text()?;
         PathBuf::from(input)
     } else {
@@ -225,6 +226,7 @@ pub async fn restore(
     let file_path = if interactive || input.is_none() {
         let input: String = Input::new()
             .with_prompt("Backup file path")
+            .allow_empty(false)
             .interact_text()?;
         PathBuf::from(input)
     } else {
