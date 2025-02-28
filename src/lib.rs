@@ -25,6 +25,10 @@ pub(crate) const DOCKER_COMPOSE_CMD: &str = "docker compose";
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// 停止容器超时时间
+    #[arg(short, long, default_value = "30")]
+    timeout: u64,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -38,14 +42,35 @@ enum Shell {
 #[derive(Subcommand)]
 enum Commands {
     /// 备份 Docker 容器数据
+    ///
+    /// 备份时将会进行的操作：
+    /// 1. 检查容器是否存在
+    /// 2. 检查容器是否正在运行，如果正在运行，则先停止容器
+    /// 3. 检查容器是否存在挂载卷
+    /// 4. 备份挂载卷
+    /// 5. 压缩挂载卷
+    /// 6. 将压缩后的挂载卷移动到输出目录
+    /// 7. 如果设置了 --restart 选项，则重启容器
     Backup {
         /// 容器名称或 ID
         #[arg(short, long)]
         container: Option<String>,
 
+        /// 数据路径
+        ///
+        /// 如果设置了该选项，则将只备份该路径下的数据
+        /// 如果未设置该选项，则将备份容器内的所有 Volumes
+        #[arg(short, long)]
+        data_path: Option<String>,
+
         /// 输出目录
         #[arg(short, long)]
+        #[arg(default_value = "./backup/")]
         output: Option<String>,
+
+        /// 是否在备份后重启容器
+        #[arg(short, long)]
+        restart: bool,
 
         /// 是否使用交互模式
         #[arg(short, long)]
@@ -53,6 +78,13 @@ enum Commands {
     },
 
     /// 恢复 Docker 容器数据
+    ///
+    /// 恢复时将会进行的操作：
+    /// 1. 检查容器是否存在
+    /// 2. 检查容器是否正在运行，如果正在运行，则先停止容器
+    /// 3. 检查容器是否存在挂载卷
+    /// 4. 恢复挂载卷
+    /// 5. 如果设置了 --restart 选项，则重启容器
     Restore {
         /// 容器名称或 ID
         #[arg(short, long)]
@@ -60,7 +92,11 @@ enum Commands {
 
         /// 备份文件路径
         #[arg(short, long)]
-        input: Option<String>,
+        file: Option<String>,
+
+        /// 是否在恢复后重启容器
+        #[arg(short, long)]
+        restart: bool,
 
         /// 是否使用交互模式
         #[arg(short, long)]
@@ -100,24 +136,34 @@ pub async fn run() -> Result<()> {
 
     // 解析命令行参数
     let cli = Cli::parse();
+    let timeout = cli.timeout;
 
     // 根据子命令执行相应的操作
     match cli.command {
         Commands::Backup {
             container,
+            data_path,
             output,
+            restart,
             interactive,
         } => {
-            info!(?container, ?output, interactive, "Executing backup command");
-            commands::backup(container, output, interactive).await?;
+            info!(
+                ?container,
+                ?data_path,
+                ?output,
+                interactive,
+                "Executing backup command"
+            );
+            commands::backup(container, data_path, output, restart, interactive, timeout).await?;
         }
         Commands::Restore {
             container,
-            input,
+            file: input,
+            restart,
             interactive,
         } => {
             info!(?container, ?input, interactive, "Executing restore command");
-            commands::restore(container, input, interactive).await?;
+            commands::restore(container, input, restart, interactive, timeout).await?;
         }
         Commands::List => {
             info!("Executing list command");

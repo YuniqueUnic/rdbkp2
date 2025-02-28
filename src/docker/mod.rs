@@ -3,6 +3,7 @@ use bollard::Docker;
 use bollard::container::{
     InspectContainerOptions, ListContainersOptions, StartContainerOptions, StopContainerOptions,
 };
+use bollard::secret::ContainerStateStatusEnum;
 use std::path::PathBuf;
 
 use tracing::{debug, error, info, warn};
@@ -129,12 +130,29 @@ impl DockerClient {
         Ok(())
     }
 
+    pub async fn restart_container(&self, container_id: &str) -> Result<()> {
+        debug!("Restarting container: {}", container_id);
+
+        let output = self
+            .client
+            .restart_container(container_id, None)
+            .await
+            .map_err(|e| {
+                error!(?e, "Failed to restart container");
+                e
+            })?;
+
+        debug!("Container restarted: {:?}", output);
+
+        Ok(())
+    }
+
     pub async fn stop_container(&self, container_id: &str) -> Result<()> {
         debug!("Stopping container: {}", container_id);
 
         let output = self
             .client
-            .stop_container(container_id, Some(StopContainerOptions { t: 3 }))
+            .stop_container(container_id, None)
             .await
             .map_err(|e| {
                 error!(?e, "Failed to stop container");
@@ -144,6 +162,31 @@ impl DockerClient {
         debug!("Container stopped: {:?}", output);
 
         Ok(())
+    }
+
+    pub(crate) async fn get_container_status(&self, id: &str) -> Result<String> {
+        let status = self
+            .client
+            .inspect_container(id, None::<InspectContainerOptions>)
+            .await?;
+        match_status(status)
+    }
+}
+
+/// 匹配容器状态
+///
+/// 将 bollard::secret::ContainerInspectResponse 中的状态转换为字符串
+fn match_status(status: bollard::secret::ContainerInspectResponse) -> Result<String> {
+    match status.state {
+        Some(state) => match state.status {
+            Some(ContainerStateStatusEnum::RUNNING) => Ok("running".to_string()),
+            Some(ContainerStateStatusEnum::PAUSED) => Ok("paused".to_string()),
+            Some(ContainerStateStatusEnum::RESTARTING) => Ok("restarting".to_string()),
+            Some(ContainerStateStatusEnum::EXITED) => Ok("exited".to_string()),
+            Some(ContainerStateStatusEnum::DEAD) => Ok("dead".to_string()),
+            _ => Err(anyhow::anyhow!("Container status not found")),
+        },
+        None => Err(anyhow::anyhow!("Container status not found")),
     }
 }
 
