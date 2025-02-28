@@ -1,6 +1,8 @@
 use anyhow::Result;
 use bollard::Docker;
-use bollard::container::{InspectContainerOptions, ListContainersOptions};
+use bollard::container::{
+    InspectContainerOptions, ListContainersOptions, StartContainerOptions, StopContainerOptions,
+};
 use std::path::PathBuf;
 
 use tracing::{debug, error, info, warn};
@@ -108,6 +110,40 @@ impl DockerClient {
         }
 
         Ok(volumes)
+    }
+
+    pub async fn start_container(&self, container_id: &str) -> Result<()> {
+        debug!("Starting container: {}", container_id);
+
+        let output = self
+            .client
+            .start_container::<String>(container_id, None)
+            .await
+            .map_err(|e| {
+                error!(?e, "Failed to start container");
+                e
+            })?;
+
+        debug!("Container started: {:?}", output);
+
+        Ok(())
+    }
+
+    pub async fn stop_container(&self, container_id: &str) -> Result<()> {
+        debug!("Stopping container: {}", container_id);
+
+        let output = self
+            .client
+            .stop_container(container_id, Some(StopContainerOptions { t: 3 }))
+            .await
+            .map_err(|e| {
+                error!(?e, "Failed to stop container");
+                e
+            })?;
+
+        debug!("Container stopped: {:?}", output);
+
+        Ok(())
     }
 }
 

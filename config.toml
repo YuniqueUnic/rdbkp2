@@ -1,5 +1,7 @@
 # Docker 容器数据备份工具配置文件
 
+backup_mapping_path = "./backup_mapping.toml"
+
 # 备份文件的默认输出目录
 backup_dir = "./backups"
 
