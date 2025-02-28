@@ -1,8 +1,6 @@
 use anyhow::Result;
 use bollard::Docker;
-use bollard::container::{
-    InspectContainerOptions, ListContainersOptions, StartContainerOptions, StopContainerOptions,
-};
+use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use bollard::secret::ContainerStateStatusEnum;
 use std::path::PathBuf;
 
@@ -113,6 +111,7 @@ impl DockerClient {
         Ok(volumes)
     }
 
+    #[allow(dead_code)]
     pub async fn start_container(&self, container_id: &str) -> Result<()> {
         debug!("Starting container: {}", container_id);
 

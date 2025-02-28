@@ -73,6 +73,7 @@ impl Config {
     }
 }
 
+#[allow(dead_code)]
 impl BackupMapper {
     pub fn load_mappings(&self) -> Result<HashMap<String, String>> {
         let mappings = mapping::load_mappings(&self.backup_mapping_path)?;
@@ -98,6 +99,7 @@ impl BackupMapper {
     }
 }
 
+#[allow(dead_code)]
 mod mapping {
     use std::{collections::HashMap, path::PathBuf};
 

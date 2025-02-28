@@ -12,11 +12,14 @@ use std::io;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
+#[allow(unused)]
 pub(crate) const DOCKER_CMD: &str = "docker";
 
+#[allow(unused)]
 #[cfg(target_os = "macos")]
 pub(crate) const DOCKER_COMPOSE_CMD: &str = "docker-compose";
 
+#[allow(unused)]
 #[cfg(not(target_os = "macos"))]
 pub(crate) const DOCKER_COMPOSE_CMD: &str = "docker compose";
 
@@ -56,14 +59,14 @@ enum Commands {
         #[arg(short, long)]
         container: Option<String>,
 
-        /// 数据路径
+        /// 需要备份的路径 (file/dir)
         ///
         /// 如果设置了该选项，则将只备份该路径下的数据
         /// 如果未设置该选项，则将备份容器内的所有 Volumes
         #[arg(short, long)]
-        data_path: Option<String>,
+        file: Option<String>,
 
-        /// 输出目录
+        /// 备份文件输出路径
         #[arg(short, long)]
         #[arg(default_value = "./backup/")]
         output: Option<String>,
@@ -93,6 +96,10 @@ enum Commands {
         /// 备份文件路径
         #[arg(short, long)]
         file: Option<String>,
+
+        /// 备份文件恢复输出路径
+        #[arg(short, long)]
+        output: Option<String>,
 
         /// 是否在恢复后重启容器
         #[arg(short, long)]
@@ -142,28 +149,35 @@ pub async fn run() -> Result<()> {
     match cli.command {
         Commands::Backup {
             container,
-            data_path,
+            file,
             output,
             restart,
             interactive,
         } => {
             info!(
                 ?container,
-                ?data_path,
+                ?file,
                 ?output,
                 interactive,
                 "Executing backup command"
             );
-            commands::backup(container, data_path, output, restart, interactive, timeout).await?;
+            commands::backup(container, file, output, restart, interactive, timeout).await?;
         }
         Commands::Restore {
             container,
-            file: input,
+            file,
+            output,
             restart,
             interactive,
         } => {
-            info!(?container, ?input, interactive, "Executing restore command");
-            commands::restore(container, input, restart, interactive, timeout).await?;
+            info!(
+                ?container,
+                ?file,
+                ?output,
+                interactive,
+                "Executing restore command"
+            );
+            commands::restore(container, file, output, restart, interactive, timeout).await?;
         }
         Commands::List => {
             info!("Executing list command");
