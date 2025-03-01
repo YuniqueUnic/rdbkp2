@@ -1,9 +1,15 @@
 # Docker 容器数据备份工具配置文件
 
-backup_mapping_path = "./backup_mapping.toml"
 
 # 备份文件的默认输出目录
 backup_dir = "./backups"
+
+# 停止容器操作的超时时间 (单位: 秒)
+timeout = 30
+
+# 备份映射文件路径
+[mapper]
+mapping_path = "./backups/mapping.toml"
 
 # Docker 相关配置
 [docker]

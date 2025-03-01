@@ -14,19 +14,20 @@ pub struct Config {
     /// 备份文件的默认输出目录
     pub backup_dir: PathBuf,
 
+    /// 默认的停止容器执行超时时间，单位为秒
+    pub timeout: u64,
+
+    #[serde(rename = "mapper")]
     /// 备份文件的默认输出目录
-    pub backup_mapper: BackupMapper,
+    pub mapper: BackupMapper,
 
     /// Docker 相关配置
     pub docker: DockerConfig,
-
-    /// 默认的停止容器执行超时时间，单位为秒
-    pub timeout: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupMapper {
-    pub backup_mapping_path: PathBuf,
+    pub mapping_path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,8 +46,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backup_dir: PathBuf::from("./backups"),
-            backup_mapper: BackupMapper {
-                backup_mapping_path: PathBuf::from("./backup_mapping.toml"),
+            mapper: BackupMapper {
+                mapping_path: PathBuf::from("./backups/mapping.toml"),
             },
             docker: DockerConfig {
                 host: "unix:///var/run/docker.sock".to_string(),
@@ -104,12 +105,40 @@ impl Config {
         Ok(config)
     }
 
-    /// 保存配置到文件
+    /// 保存配置到文件，并保留注释
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = toml::to_string_pretty(self).map_err(|e| {
+        let mut content = toml::to_string_pretty(self).map_err(|e| {
             error!(?e, "Failed to serialize config");
             e
         })?;
+
+        // 手动添加注释
+        let comments = r#"
+    # Docker 容器数据备份工具配置文件
+
+    # 备份文件的默认输出目录
+    # backup_dir = "./backups"
+
+    # 停止容器操作的超时时间 (单位：秒)
+    # timeout = 30
+
+    # 备份映射文件路径
+    # [mapper]
+    # mapping_path = "./backups/mapping.toml"
+
+    # Docker 相关配置
+    # [docker]
+    # Docker daemon 的地址
+    # host = "unix:///var/run/docker.sock"
+    # 是否使用 TLS
+    # tls = false
+    # 证书路径 (如果使用 TLS)
+    # cert_path = "/path/to/cert"
+    "#;
+
+        // 将注释插入到文件内容的前面
+        content = format!("{}\n{}", comments.trim(), content);
+
         std::fs::write(path.as_ref(), content).map_err(|e| {
             error!(?e, path = ?path.as_ref(), "Failed to write config file");
             e
@@ -157,24 +186,24 @@ impl Config {
 
 impl BackupMapper {
     pub fn load_mappings(&self) -> Result<HashMap<String, String>> {
-        let mappings = mapping::load_mappings(&self.backup_mapping_path)?;
+        let mappings = mapping::load_mappings(&self.mapping_path)?;
         debug!(?mappings, "Backup mappings loaded");
         Ok(mappings)
     }
 
     pub fn save_mappings(&self, mappings: &HashMap<String, String>) -> Result<()> {
-        mapping::save_mappings(&self.backup_mapping_path, mappings)
+        mapping::save_mappings(&self.mapping_path, mappings)
     }
 
     pub fn add_mappings(&self, mappings: impl IntoIterator<Item = (String, String)>) -> Result<()> {
-        mapping::add_mappings(&self.backup_mapping_path, mappings)
+        mapping::add_mappings(&self.mapping_path, mappings)
     }
 
     pub fn remove_mappings(
         &self,
         keys: impl IntoIterator<Item = String>,
     ) -> Result<impl IntoIterator<Item = (String, String)>> {
-        let removed_mappings = mapping::remove_mappings(&self.backup_mapping_path, keys)?;
+        let removed_mappings = mapping::remove_mappings(&self.mapping_path, keys)?;
         let removed_map: HashMap<_, _> = removed_mappings.clone().into_iter().collect();
         self.save_mappings(&removed_map)?;
         Ok(removed_mappings)

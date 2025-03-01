@@ -150,7 +150,8 @@ pub fn load_config() -> Result<()> {
         cfg.save_to_file(cfg_path)?;
         config::Config::init(cfg)?;
     } else {
-        config::Config::init_from_file(cfg_path)?;
+        config::Config::init_from_file(&cfg_path)?;
+        config::Config::global()?.save_to_file(cfg_path)?;
     }
 
     Ok(())
