@@ -27,3 +27,4 @@ mapping_path = "./backups/mapping.toml"
 [docker]
 host = "unix:///var/run/docker.sock"
 tls = false
+cert_path = ""

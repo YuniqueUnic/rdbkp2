@@ -202,10 +202,11 @@ pub async fn run() -> Result<()> {
             info!(?shell, "Generating shell completions");
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
+
             match shell {
                 Shell::Bash => {
                     clap_complete::generate(
-                        clap_complete::shells::Bash,
+                        clap_complete::aot::Bash,
                         &mut cmd,
                         &name,
                         &mut io::stdout(),
@@ -213,7 +214,7 @@ pub async fn run() -> Result<()> {
                 }
                 Shell::Fish => {
                     clap_complete::generate(
-                        clap_complete::shells::Fish,
+                        clap_complete::aot::Fish,
                         &mut cmd,
                         &name,
                         &mut io::stdout(),
@@ -221,7 +222,7 @@ pub async fn run() -> Result<()> {
                 }
                 Shell::Zsh => {
                     clap_complete::generate(
-                        clap_complete::shells::Zsh,
+                        clap_complete::aot::Zsh,
                         &mut cmd,
                         &name,
                         &mut io::stdout(),
@@ -229,7 +230,7 @@ pub async fn run() -> Result<()> {
                 }
                 Shell::PowerShell => {
                     clap_complete::generate(
-                        clap_complete::shells::PowerShell,
+                        clap_complete::aot::PowerShell,
                         &mut cmd,
                         &name,
                         &mut io::stdout(),
