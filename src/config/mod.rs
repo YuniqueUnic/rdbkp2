@@ -147,17 +147,17 @@ impl Config {
         Ok(())
     }
 
-    /// 确保备份目录存在
-    pub fn ensure_backup_dir(&self) -> Result<()> {
-        if !self.backup_dir.exists() {
-            std::fs::create_dir_all(&self.backup_dir).map_err(|e| {
-                error!(?e, path = ?self.backup_dir, "Failed to create backup directory");
-                e
-            })?;
-            info!(path = ?self.backup_dir, "Backup directory created");
-        }
-        Ok(())
-    }
+    // /// 确保备份目录存在 (maybe this capability is not needed for config class)
+    // pub fn ensure_backup_dir(&self) -> Result<()> {
+    //     if !self.backup_dir.exists() {
+    //         std::fs::create_dir_all(&self.backup_dir).map_err(|e| {
+    //             error!(?e, path = ?self.backup_dir, "Failed to create backup directory");
+    //             e
+    //         })?;
+    //         info!(path = ?self.backup_dir, "Backup directory created");
+    //     }
+    //     Ok(())
+    // }
 
     /// 更新全局配置
     pub fn update<F>(&self, f: F) -> Result<()>

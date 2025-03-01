@@ -9,6 +9,16 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
+#[macro_export]
+macro_rules! prompt_select {
+    ($prompt_str:expr) => {
+        format!(
+            "[💡use arrow keys to move, press [enter] to select]\r\n{}",
+            $prompt_str
+        )
+    };
+}
+
 pub async fn list_containers() -> Result<()> {
     debug!("Initializing Docker client for container listing");
     let client = DockerClient::new().await?;
@@ -33,47 +43,65 @@ pub async fn list_containers() -> Result<()> {
     );
     Ok(())
 }
-
 async fn stop_container_timeout(
     client: &DockerClient,
     container_info: &ContainerInfo,
-    timeout: u64,
+    timeout_secs: u64, // 修改为 timeout_secs，更清晰地表明单位是秒
 ) -> Result<()> {
     // 首先尝试停止容器
+    println!("Attempting to stop container {}", container_info.id);
     debug!("Attempting to stop container {}", container_info.id);
     client.stop_container(&container_info.id).await?;
 
-    // 然后等待容器完全停止
-    let timer = tokio::time::timeout(Duration::from_secs(timeout), async move {
+    // 然后等待容器完全停止，并添加终端输出反馈
+    let timer_result = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
         loop {
             match client.get_container_status(&container_info.id).await {
                 Ok(status) => {
                     if status != "running" && status != "restarting" {
-                        debug!("Container stopped successfully with status: {}", status);
-                        return Ok(());
+                        info!(
+                            "Container {} stopped successfully with status: {}",
+                            container_info.id, status
+                        );
+                        return Ok(()); // 容器成功停止，返回 Ok
+                    } else {
+                        info!(
+                            "Container {} still stopping, current status: {}",
+                            container_info.id, status
+                        ); // 输出反馈信息
                     }
                 }
                 Err(e) => {
-                    error!("Failed to get container status: {}", e);
-                    return Err(e);
+                    error!(
+                        "Failed to get container status for container {}: {}",
+                        container_info.id, e
+                    );
+                    return Err(anyhow::anyhow!("Failed to get container status: {}", e)); // 获取状态失败，返回 Err
                 }
             };
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await; // 每秒检查一次状态
         }
-    });
+    })
+    .await;
 
-    // 处理超时情况
-    match timer.await {
-        Ok(result) => result.map_err(|e| anyhow::anyhow!("Failed to stop container: {}", e)),
-        Err(_) => {
-            error!("Timeout while waiting for container to stop");
+    // 处理超时情况和结果
+    match timer_result {
+        Ok(result) => result
+            .map_err(|e| anyhow::anyhow!("Failed to stop container {}: {}", container_info.id, e)),
+        Err(_timeout_err) => {
+            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+            error!(
+                "Timeout while waiting for container {} to stop after {} seconds",
+                container_info.id, timeout_secs
+            );
             Err(anyhow::anyhow!(
-                "Timeout while waiting for container to stop"
+                "Timeout while waiting for container {} to stop after {} seconds",
+                container_info.id,
+                timeout_secs
             ))
         }
     }
 }
-
 pub async fn backup(
     container: Option<String>,
     file: Option<String>,
@@ -239,7 +267,7 @@ pub async fn restore(
             files[0].clone()
         } else {
             let selection = Select::new()
-                .with_prompt("Select backup file")
+                .with_prompt(prompt_select!("Select one file to restore"))
                 .items(&files.iter().map(|f| f.display()).collect::<Vec<_>>())
                 .default(0)
                 .interact()?;
@@ -332,8 +360,9 @@ async fn select_container(client: &DockerClient) -> Result<ContainerInfo> {
 
     debug!("Displaying container selection prompt");
     let selection = Select::new()
-        .with_prompt("Select container")
+        .with_prompt(prompt_select!("Select one container"))
         .items(&container_names)
+        .default(0)
         .interact()?;
 
     let selected = containers[selection].clone();
@@ -355,10 +384,9 @@ fn select_volumes(volumes: &[VolumeInfo]) -> Result<Vec<VolumeInfo>> {
     debug!("Displaying volume selection prompt");
 
     let selections = MultiSelect::new()
-        .with_prompt(
-            "[use arrow keys to move, press enter to select]\r\nSelect one or more volumes",
-        )
+        .with_prompt(prompt_select!("Select one or more volumes"))
         .items(&volume_names)
+        .defaults(&[true])
         .interact()?;
 
     let selected: Vec<VolumeInfo> = selections.iter().map(|i| volumes[*i].clone()).collect();
@@ -376,8 +404,9 @@ fn select_volume(volumes: &[VolumeInfo]) -> Result<VolumeInfo> {
         .collect();
 
     let selection = Select::new()
-        .with_prompt("[use arrow keys to move, press enter to select]\r\nSelect one volume")
+        .with_prompt(prompt_select!("Select one volume"))
         .items(&volume_names)
+        .default(0)
         .interact()?;
 
     let selected = volumes[selection].clone();
@@ -448,50 +477,6 @@ async fn backup_volume(
     println!("Backup completed: {}", backup_path.display());
     Ok(())
 }
-
-// async fn restore_volume_a(container: &ContainerInfo, file_path: &PathBuf) -> Result<()> {
-//     info!(
-//         container_name = ?container.name,
-//         file_path = ?file_path,
-//         "Starting volume restore"
-//     );
-
-//     println!(
-//         "Restoring {} to container {}",
-//         file_path.display(),
-//         container.name
-//     );
-
-//     // 获取卷信息
-//     debug!(container_id = ?container.id, "Getting volume information");
-//     let client = DockerClient::new().await?;
-//     let volumes = client.get_container_volumes(&container.id).await?;
-
-//     // 选择要恢复的卷
-//     // TODO: Fix this
-//     debug!(volume_count = volumes.len(), "Selecting target volume");
-//     let volume = if volumes.len() == 1 {
-//         volumes[0].clone()
-//     } else {
-//         select_volumes(&volumes)?[0].clone()
-//     };
-
-//     debug!(
-//         source = ?file_path,
-//         destination = ?volume.source,
-//         "Extracting backup archive"
-//     );
-
-//     // 解压备份文件到卷目录
-//     extract_archive(file_path, &volume.source)?;
-
-//     info!(
-//         volume_name = ?volume.name,
-//         "Volume restore completed successfully"
-//     );
-//     println!("Restore completed to {}", volume.source.display());
-//     Ok(())
-// }
 
 async fn restore_volume(
     container: &ContainerInfo,
