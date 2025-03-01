@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 use walkdir::WalkDir;
@@ -300,6 +301,72 @@ pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     } else {
         debug!(?path, "Directory already exists");
     }
+    Ok(())
+}
+
+/// 从压缩包中读取指定文件的内容
+pub fn read_file_from_archive<P: AsRef<Path>>(archive_path: P, file_name: &str) -> Result<String> {
+    let file = File::open(archive_path.as_ref())?;
+    let xz = XzDecoder::new(file);
+    let mut archive = tar::Archive::new(xz);
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        if entry.path()?.to_string_lossy() == file_name {
+            let mut content = String::new();
+            entry.read_to_string(&mut content)?;
+            return Ok(content);
+        }
+    }
+
+    Err(anyhow::anyhow!("File not found in archive: {}", file_name))
+}
+
+/// 压缩目录/文件，并在压缩包中添加额外的内存文件
+pub fn compress_with_memory_file<P: AsRef<Path>>(
+    source: P,
+    output_file: P,
+    memory_files: &[(&str, &str)], // (文件名，文件内容)
+    exclude_patterns: &[&str],
+) -> Result<()> {
+    let file = File::create(output_file.as_ref())?;
+    let xz = XzEncoder::new(file, 9);
+    let mut tar = tar::Builder::new(xz);
+
+    // 首先添加内存中的文件
+    for (name, content) in memory_files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, name, content.as_bytes())?;
+    }
+
+    // 然后添加源目录/文件
+    if source.as_ref().is_dir() {
+        let walker = WalkDir::new(source.as_ref())
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|e| {
+                let path = e.path().to_string_lossy();
+                !exclude_patterns.iter().any(|p| path.contains(p))
+            });
+
+        for entry in walker.filter_map(|e| e.ok()) {
+            if entry.path().is_file() {
+                let name = entry.path().strip_prefix(source.as_ref())?;
+                tar.append_path_with_name(entry.path(), name)?;
+            }
+        }
+    } else if source.as_ref().is_file() {
+        let name = source
+            .as_ref()
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get file name"))?;
+        tar.append_path_with_name(source.as_ref(), name)?;
+    }
+
+    tar.finish()?;
     Ok(())
 }
 

@@ -2,6 +2,7 @@ use anyhow::Result;
 use bollard::Docker;
 use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use bollard::secret::ContainerStateStatusEnum;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use tracing::{debug, error, info, warn};
@@ -193,11 +194,25 @@ pub struct ContainerInfo {
     pub status: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BackupMapping {
+    /// 容器名称
+    pub container_name: String,
+    /// 容器 ID
+    pub container_id: String,
+    /// 备份的卷信息
+    pub volumes: Vec<VolumeInfo>,
+    /// 备份时间
+    pub backup_time: String,
+    /// 备份版本
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeInfo {
+    pub name: String,
     pub source: PathBuf,
     pub destination: PathBuf,
-    pub name: String,
 }
 
 #[cfg(test)]
