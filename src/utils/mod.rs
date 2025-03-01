@@ -6,6 +6,90 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
+pub fn compress<P: AsRef<Path>>(
+    source: P,
+    output_file: P,
+    exclude_patterns: &[&str],
+) -> Result<()> {
+    let source = source.as_ref();
+    let output_file = output_file.as_ref();
+
+    info!(
+        source = ?source,
+        output_file = ?output_file,
+        "Starting directory compression"
+    );
+
+    let file = File::create(output_file).map_err(|e| {
+        error!(?e, ?output_file, "Failed to create output file");
+        e
+    })?;
+
+    debug!("Creating XZ encoder with compression level 9");
+    let xz = XzEncoder::new(file, 9);
+    let mut tar = tar::Builder::new(xz);
+
+    debug!(
+        ?exclude_patterns,
+        "Setting up file walker with exclusion patterns"
+    );
+    let walker = walkdir::WalkDir::new(source)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| {
+            let path = e.path().to_string_lossy();
+            let excluded = exclude_patterns.iter().any(|p| path.contains(p));
+            if excluded {
+                debug!(path = ?e.path(), "Excluding path");
+            }
+            !excluded
+        });
+
+    let mut file_count = 0;
+    if source.is_dir() {
+        for entry in walker.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() {
+                debug!(path = ?path, "Adding file to archive");
+                let name = path.strip_prefix(source).map_err(|e| {
+                    error!(?e, ?path, "Failed to strip prefix from path");
+                    e
+                })?;
+                tar.append_path_with_name(path, name).map_err(|e| {
+                    error!(?e, ?path, "Failed to add file to archive");
+                    e
+                })?;
+                file_count += 1;
+            }
+        }
+    } else if source.is_file() {
+        debug!(path = ?source, "Adding file to archive");
+        let name = source.file_name().ok_or_else(|| {
+            error!("Failed to get file name");
+            anyhow::anyhow!("Failed to get file name")
+        })?;
+        tar.append_path_with_name(source, name).map_err(|e| {
+            error!(?e, ?source, "Failed to add file to archive");
+            e
+        })?;
+        file_count += 1;
+    }
+
+    debug!("Finalizing archive");
+    tar.finish().map_err(|e| {
+        error!(?e, "Failed to finalize archive");
+        e
+    })?;
+
+    info!(
+        file_count,
+        source_dir = ?source,
+        output_file = ?output_file,
+        "Directory compression completed successfully"
+    );
+    Ok(())
+}
+
 pub fn compress_directory<P: AsRef<Path>>(
     source_dir: P,
     output_file: P,
@@ -190,12 +274,26 @@ pub fn get_files_start_with<P: AsRef<Path>>(
 
 pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     let path = path.as_ref();
+
     if !path.exists() {
         debug!(?path, "Creating directory");
-        std::fs::create_dir_all(path).map_err(|e| {
-            error!(?e, ?path, "Failed to create directory");
-            e
-        })?;
+
+        if path.extension().is_none() {
+            std::fs::create_dir_all(path).map_err(|e| {
+                error!(?e, ?path, "Failed to create directory");
+                e
+            })?;
+        } else {
+            let parent_dir = path.parent().ok_or_else(|| {
+                anyhow::anyhow!("Failed to get parent directory: {}", path.display())
+            })?;
+
+            std::fs::create_dir(parent_dir).map_err(|e| {
+                error!(?e, ?path, "Failed to create directory");
+                e
+            })?;
+        }
+
         info!(?path, "Directory created successfully");
     } else {
         debug!(?path, "Directory already exists");
@@ -258,6 +356,17 @@ mod tests {
         extracted_file.assert(predicate::path::exists());
         extracted_file.assert(predicate::str::contains("Hello, World!"));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_compress_and_extract_with_input() -> Result<()> {
+        let file = "./docker/Dockerfile";
+        let archive_path = "./backups/dockerfile.tar.xz";
+        let target_dir = "./backups/dockerfile";
+        ensure_dir_exists(target_dir)?;
+        compress(file, archive_path, &[])?;
+        extract_archive(archive_path, target_dir)?;
         Ok(())
     }
 }

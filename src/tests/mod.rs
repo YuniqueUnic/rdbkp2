@@ -38,7 +38,7 @@ async fn test_backup_restore_workflow() -> Result<()> {
     // 启动 Docker 容器
     Command::new(DOCKER_COMPOSE_CMD)
         .current_dir(&docker_dir)
-        .args(&["-f", "docker-compose.yaml", "up", "-d"])
+        .args(["-f", "docker-compose.yaml", "up", "-d"])
         .status()?;
 
     // 等待服务启动
@@ -61,12 +61,12 @@ async fn test_backup_restore_workflow() -> Result<()> {
     // 执行备份
     Command::new(DOCKER_COMPOSE_CMD)
         .current_dir(&docker_dir)
-        .args(&["-f", "docker-compose.yaml", "stop"])
+        .args(["-f", "docker-compose.yaml", "stop"])
         .status()?;
 
     let backup_path = backup_dir.path().to_str().unwrap();
     Command::new("cargo")
-        .args(&["run", "--", "backup", "-c", "sim-server", "-o", backup_path])
+        .args(["run", "--", "backup", "-c", "sim-server", "-o", backup_path])
         .status()?;
 
     // 修改配置
@@ -84,7 +84,7 @@ async fn test_backup_restore_workflow() -> Result<()> {
 
     // 执行恢复
     Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--",
             "restore",
@@ -98,7 +98,7 @@ async fn test_backup_restore_workflow() -> Result<()> {
     // 重启服务
     Command::new(DOCKER_COMPOSE_CMD)
         .current_dir(&docker_dir)
-        .args(&["-f", "docker-compose.yaml", "up", "-d"])
+        .args(["-f", "docker-compose.yaml", "up", "-d"])
         .status()?;
 
     sleep(Duration::from_secs(5)).await;
@@ -127,7 +127,7 @@ async fn test_backup_restore_workflow() -> Result<()> {
     // 清理
     Command::new(DOCKER_COMPOSE_CMD)
         .current_dir(&docker_dir)
-        .args(&["-f", "docker-compose.yaml", "down"])
+        .args(["-f", "docker-compose.yaml", "down"])
         .status()?;
 
     Ok(())

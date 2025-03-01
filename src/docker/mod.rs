@@ -115,8 +115,7 @@ impl DockerClient {
     pub async fn start_container(&self, container_id: &str) -> Result<()> {
         debug!("Starting container: {}", container_id);
 
-        let output = self
-            .client
+        self.client
             .start_container::<String>(container_id, None)
             .await
             .map_err(|e| {
@@ -124,7 +123,7 @@ impl DockerClient {
                 e
             })?;
 
-        debug!("Container started: {:?}", output);
+        debug!("Container started: {:?}", container_id);
 
         Ok(())
     }
@@ -132,8 +131,7 @@ impl DockerClient {
     pub async fn restart_container(&self, container_id: &str) -> Result<()> {
         debug!("Restarting container: {}", container_id);
 
-        let output = self
-            .client
+        self.client
             .restart_container(container_id, None)
             .await
             .map_err(|e| {
@@ -141,7 +139,7 @@ impl DockerClient {
                 e
             })?;
 
-        debug!("Container restarted: {:?}", output);
+        debug!("Container restarted: {:?}", container_id);
 
         Ok(())
     }
@@ -149,8 +147,7 @@ impl DockerClient {
     pub async fn stop_container(&self, container_id: &str) -> Result<()> {
         debug!("Stopping container: {}", container_id);
 
-        let output = self
-            .client
+        self.client
             .stop_container(container_id, None)
             .await
             .map_err(|e| {
@@ -158,7 +155,7 @@ impl DockerClient {
                 e
             })?;
 
-        debug!("Container stopped: {:?}", output);
+        debug!("Container stopped: {:?}", container_id);
 
         Ok(())
     }
@@ -216,7 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_docker_client_creation() -> Result<()> {
-        let client = DockerClient::new().await?;
+        let _client = DockerClient::new().await?;
         Ok(())
     }
 
@@ -255,7 +252,7 @@ mod tests {
         debug!("Cleaning up old containers...");
         let cleanup = Command::new(DOCKER_COMPOSE_CMD)
             .current_dir(&docker_dir)
-            .args(&["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
+            .args(["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
             .output()
             .await?;
 
@@ -271,7 +268,7 @@ mod tests {
         debug!("Starting containers...");
         let output = Command::new(DOCKER_COMPOSE_CMD)
             .current_dir(&docker_dir)
-            .args(&["-f", &docker_compose_file.to_string_lossy(), "up", "-d"])
+            .args(["-f", &docker_compose_file.to_string_lossy(), "up", "-d"])
             .output()
             .await?;
 
@@ -307,7 +304,7 @@ mod tests {
         debug!("Cleaning up test environment...");
         let cleanup = Command::new(DOCKER_COMPOSE_CMD)
             .current_dir(&docker_dir)
-            .args(&["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
+            .args(["-f", &docker_compose_file.to_string_lossy(), "down", "-v"])
             .output()
             .await?;
 

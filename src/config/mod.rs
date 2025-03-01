@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 static CONFIG: OnceLock<Arc<RwLock<Option<Config>>>> = OnceLock::new();
 

@@ -29,6 +29,10 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
+    /// 是否在操作 (备份/恢复) 后重启容器
+    #[arg(short, long)]
+    restart: bool,
+
     /// 停止容器超时时间 (秒)
     #[arg(short, long, default_value = "30")]
     timeout: u64,
@@ -71,10 +75,6 @@ enum Commands {
         #[arg(default_value = "./backup/")]
         output: Option<String>,
 
-        /// 是否在备份后重启容器
-        #[arg(short, long)]
-        restart: bool,
-
         /// 是否使用交互模式
         #[arg(short, long)]
         interactive: bool,
@@ -100,10 +100,6 @@ enum Commands {
         /// 备份文件恢复输出路径
         #[arg(short, long)]
         output: Option<String>,
-
-        /// 是否在恢复后重启容器
-        #[arg(short, long)]
-        restart: bool,
 
         /// 是否使用交互模式
         #[arg(short, long)]
@@ -164,6 +160,7 @@ pub async fn run() -> Result<()> {
     // 解析命令行参数
     let cli = Cli::parse();
     let timeout = cli.timeout;
+    let restart = cli.restart;
 
     // 根据子命令执行相应的操作
     match cli.command {
@@ -171,7 +168,6 @@ pub async fn run() -> Result<()> {
             container,
             file,
             output,
-            restart,
             interactive,
         } => {
             info!(
@@ -187,7 +183,6 @@ pub async fn run() -> Result<()> {
             container,
             file,
             output,
-            restart,
             interactive,
         } => {
             info!(
