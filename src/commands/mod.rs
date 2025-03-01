@@ -1,10 +1,12 @@
 use crate::config::Config;
-use crate::docker::{ContainerInfo, DockerClient, VolumeInfo};
+use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
 use crate::utils::{self, compress, create_timestamp_filename, ensure_dir_exists, extract_archive};
 use anyhow::Result;
+use chrono::Local;
 use dialoguer::{Confirm, Input, MultiSelect, Select};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use toml;
 use tracing::{debug, error, info, warn};
 
 #[macro_export]
@@ -100,6 +102,7 @@ async fn stop_container_timeout(
         }
     }
 }
+
 pub async fn backup(
     container: Option<String>,
     file: Option<String>,
@@ -196,9 +199,39 @@ pub async fn backup(
         };
     }
 
-    // 执行备份
+    // Create backup mapping
+    let backup_mapping = BackupMapping {
+        container_name: container_info.name.clone(),
+        container_id: container_info.id.clone(),
+        volumes: selected_volumes.clone(),
+        backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+
+    // Convert mapping to TOML
+    let mapping_content = toml::to_string(&backup_mapping)?;
+
+    // Create backup for each volume and include mapping
     for volume in selected_volumes {
-        backup_volume(&container_info, &volume, &output_dir).await?;
+        let backup_filename = create_timestamp_filename(
+            &format!("{}_{}", container_info.name, volume.name),
+            ".tar.xz",
+        );
+        let backup_path = output_dir.join(&backup_filename);
+
+        // Compress volume directory with mapping file
+        utils::compress_with_memory_file(
+            &volume.source,
+            &backup_path,
+            &[("mapping.toml", &mapping_content)],
+            &[".git", "node_modules", "target"],
+        )?;
+
+        info!(
+            backup_file = ?backup_path,
+            "Volume backup completed successfully"
+        );
+        println!("Backup completed: {}", backup_path.display());
     }
 
     info!(
@@ -221,6 +254,7 @@ pub async fn backup(
     Ok(())
 }
 
+// TODO
 pub async fn restore(
     container: Option<String>,
     input: Option<String>,
@@ -293,17 +327,34 @@ pub async fn restore(
     // 如果容器正在运行或重启中，则停止容器
     stop_container_timeout(&client, &container_info, timeout).await?;
 
-    let output_dir = if output.is_none() {
-        select_volume(&client.get_container_volumes(&container_info.id).await?)?.source
+    // Read mapping from backup file
+    let mapping_content = utils::read_file_from_archive(&file_path, "mapping.toml")?;
+    let backup_mapping: BackupMapping = toml::from_str(&mapping_content)?;
+
+    // Verify container matches
+    if container_info.name != backup_mapping.container_name {
+        error!(
+            "Backup is for container {} but trying to restore to {}",
+            backup_mapping.container_name, container_info.name
+        );
+        return Err(anyhow::anyhow!(
+            "Container mismatch: backup is for {} but trying to restore to {}",
+            backup_mapping.container_name,
+            container_info.name
+        ));
+    }
+
+    // If output path not specified, use the original paths from mapping
+    let output_dir = if let Some(output) = output {
+        PathBuf::from(output)
     } else {
-        match output {
-            Some(output) => PathBuf::from(output),
-            None => {
-                error!("Restore output directory is required");
-                println!("Restore output directory is required");
-                return Ok(());
-            }
-        }
+        // Use the first volume's source path from mapping
+        let user_input = Input::new()
+            .with_prompt("Restore output directory")
+            .default(backup_mapping.volumes[0].source.display().to_string())
+            .allow_empty(false)
+            .interact_text()?;
+        PathBuf::from(user_input)
     };
 
     // 确保输出目录存在
