@@ -1,8 +1,6 @@
 use crate::config::Config;
 use crate::docker::{ContainerInfo, DockerClient, VolumeInfo};
-use crate::utils::{
-    self, compress_directory, create_timestamp_filename, ensure_dir_exists, extract_archive,
-};
+use crate::utils::{self, compress, create_timestamp_filename, ensure_dir_exists, extract_archive};
 use anyhow::Result;
 use dialoguer::{Confirm, Input, MultiSelect, Select};
 use std::path::{Path, PathBuf};
@@ -464,7 +462,7 @@ async fn backup_volume(
     );
 
     // 压缩卷目录
-    compress_directory(
+    compress(
         &volume.source,
         &backup_path,
         &[".git", "node_modules", "target"],

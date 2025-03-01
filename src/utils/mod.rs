@@ -90,7 +90,9 @@ pub fn compress<P: AsRef<Path>>(
     Ok(())
 }
 
-pub fn compress_directory<P: AsRef<Path>>(
+#[deprecated]
+#[allow(dead_code)]
+fn compress_dir<P: AsRef<Path>>(
     source_dir: P,
     output_file: P,
     exclude_patterns: &[&str],
@@ -306,6 +308,15 @@ mod tests {
     use super::*;
     use assert_fs::prelude::*;
     use predicates::prelude::*;
+    fn assert_content_match<P: AsRef<Path>>(a: P, b: P) -> Result<()> {
+        let a = a.as_ref();
+        let b = b.as_ref();
+
+        let a_file = fs::read_to_string(a).expect("Failed to read file");
+        let b_file = fs::read_to_string(b).expect("Failed to read file");
+        assert_eq!(a_file, b_file);
+        Ok(())
+    }
 
     #[test]
     fn test_create_timestamp_filename() {
@@ -343,7 +354,7 @@ mod tests {
 
         // 压缩
         let archive = temp.child("archive.tar.xz");
-        compress_directory(&source_dir, &archive, &[])?;
+        compress(&source_dir, &archive, &[])?;
         archive.assert(predicate::path::exists());
 
         // 解压
@@ -363,10 +374,17 @@ mod tests {
     fn test_compress_and_extract_with_input() -> Result<()> {
         let file = "./docker/Dockerfile";
         let archive_path = "./backups/dockerfile.tar.xz";
-        let target_dir = "./backups/dockerfile";
+        let target_dir = "./backups/";
         ensure_dir_exists(target_dir)?;
         compress(file, archive_path, &[])?;
         extract_archive(archive_path, target_dir)?;
+
+        let output = format!("{}/{}", target_dir, file.split('/').last().unwrap());
+        assert_content_match(file, &output)?;
+
+        fs::remove_file(archive_path)?;
+        fs::remove_file(output)?;
+
         Ok(())
     }
 }
