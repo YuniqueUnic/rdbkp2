@@ -19,6 +19,9 @@ pub struct Config {
 
     /// Docker 相关配置
     pub docker: DockerConfig,
+
+    /// 默认的停止容器执行超时时间，单位为秒
+    pub timeout: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -50,6 +53,7 @@ impl Default for Config {
                 tls: false,
                 cert_path: None,
             },
+            timeout: 30,
         }
     }
 }

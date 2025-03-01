@@ -8,8 +8,8 @@ mod tests;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use std::io;
-use tracing::{Level, info};
+use std::{io, path::PathBuf};
+use tracing::{Level, info, instrument};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[allow(unused)]
@@ -29,7 +29,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// 停止容器超时时间
+    /// 停止容器超时时间 (秒)
     #[arg(short, long, default_value = "30")]
     timeout: u64,
 }
@@ -121,6 +121,7 @@ enum Commands {
     },
 }
 
+#[instrument(level = "INFO")]
 pub fn init_log() -> Result<()> {
     // 初始化日志
     fmt()
@@ -138,6 +139,24 @@ pub fn init_log() -> Result<()> {
     Ok(())
 }
 
+const DEFAULT_CONFIG_FILE_PATH: &str = "./config.toml";
+
+#[instrument(level = "INFO", fields(cfg_path = DEFAULT_CONFIG_FILE_PATH))]
+pub fn load_config() -> Result<()> {
+    let cfg_path = PathBuf::from(DEFAULT_CONFIG_FILE_PATH);
+
+    if !cfg_path.exists() {
+        let cfg = config::Config::default();
+        cfg.save_to_file(cfg_path)?;
+        config::Config::init(cfg)?;
+    } else {
+        config::Config::init_from_file(cfg_path)?;
+    }
+
+    Ok(())
+}
+
+#[instrument(level = "INFO")]
 pub async fn run() -> Result<()> {
     info!("Starting Docker container backup tool");
 
