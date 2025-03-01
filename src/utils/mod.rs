@@ -1,7 +1,8 @@
 use anyhow::Result;
-use std::fs::File;
-use std::path::Path;
-use tracing::{debug, error, info};
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use tracing::{debug, error, info, warn};
+use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
@@ -110,6 +111,81 @@ pub fn create_timestamp_filename(prefix: &str, ext: &str) -> String {
     let filename = format!("{}_{}{}", prefix, Local::now().format("%Y%m%d_%H%M%S"), ext);
     debug!(?filename, "Created timestamp filename");
     filename
+}
+
+/// 获取指定路径下以指定前缀开头的文件列表 (递归或非递归)
+///
+/// # Arguments
+///
+/// * `path`: 要搜索的路径。
+/// * `prefix`: 文件名前缀。
+/// * `recursive`: 是否递归搜索子目录。如果为 `true`，则递归搜索所有子目录；如果为 `false`，则只搜索当前目录。
+///
+/// # Returns
+///
+/// 返回一个 `Result`，包含一个 `PathBuf` 向量，其中包含所有匹配的文件路径。
+/// 如果发生错误，则返回 `Err`，例如路径不存在或无法访问。
+pub fn get_files_start_with<P: AsRef<Path>>(
+    path: P,
+    prefix: &str,
+    recursive: bool,
+) -> Result<Vec<PathBuf>> {
+    let path_ref = path.as_ref();
+    let mut files = Vec::new();
+
+    if recursive {
+        debug!(path = ?path_ref, prefix, "开始递归搜索文件");
+        for entry in WalkDir::new(path_ref).into_iter().filter_map(|e| e.ok()) {
+            if entry.file_type().is_file() {
+                let file_name = entry.file_name().to_string_lossy();
+                if file_name.starts_with(prefix) {
+                    files.push(entry.path().to_path_buf());
+                    debug!(file_path = ?entry.path(), "找到匹配文件 (递归)");
+                }
+            } else if entry.file_type().is_dir() && entry.depth() > 0 {
+                debug!(dir_path = ?entry.path(), "进入子目录");
+            }
+        }
+    } else {
+        debug!(path = ?path_ref, prefix, "开始非递归搜索文件");
+        match fs::read_dir(path_ref) {
+            Ok(entries) => {
+                for entry_result in entries {
+                    match entry_result {
+                        Ok(entry) => {
+                            let file_type = entry.file_type()?;
+                            if file_type.is_file() {
+                                let entry_name = entry.file_name();
+                                let file_name = entry_name.to_string_lossy();
+                                if file_name.starts_with(prefix) {
+                                    files.push(entry.path());
+                                    debug!(file_path = ?entry.path(), "找到匹配文件 (非递归)");
+                                }
+                            } else if file_type.is_dir() {
+                                debug!(dir_path = ?entry.path(), "忽略子目录 (非递归)");
+                            }
+                        }
+                        Err(e) => {
+                            warn!(error = ?e, path = ?path_ref, "读取目录条目失败");
+                            // 在非递归模式下，单个条目读取失败不应终止整个函数，记录 warning 并继续
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!(error = ?e, path = ?path_ref, "读取目录失败");
+                return Err(anyhow::anyhow!(e)); // 直接返回 read_dir 的错误
+            }
+        }
+    }
+
+    if files.is_empty() {
+        debug!(path = ?path_ref, prefix, recursive, "未找到任何匹配文件");
+    } else {
+        debug!(path = ?path_ref, prefix, recursive, file_count = files.len(), "找到匹配文件");
+    }
+
+    Ok(files)
 }
 
 pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {

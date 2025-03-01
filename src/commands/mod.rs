@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::docker::{ContainerInfo, DockerClient, VolumeInfo};
 use crate::utils::{
-    compress_directory, create_timestamp_filename, ensure_dir_exists, extract_archive,
+    self, compress_directory, create_timestamp_filename, ensure_dir_exists, extract_archive,
 };
 use anyhow::Result;
 use dialoguer::{Confirm, Input, MultiSelect, Select};
@@ -57,7 +57,7 @@ async fn stop_container_timeout(
                     error!("Failed to get container status: {}", e);
                     return Err(e);
                 }
-            }
+            };
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
@@ -92,7 +92,7 @@ pub async fn backup(
     );
 
     let client = DockerClient::new().await?;
-    let config = Config::default();
+    let config = Config::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
@@ -212,6 +212,7 @@ pub async fn restore(
     );
 
     let client = DockerClient::new().await?;
+    let config = Config::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
@@ -224,11 +225,26 @@ pub async fn restore(
     // 获取备份文件路径
     debug!(container_name = ?container_info.name, "Getting backup file path");
     let file_path = if interactive || input.is_none() {
-        let input: String = Input::new()
-            .with_prompt("Backup file path")
-            .allow_empty(false)
-            .interact_text()?;
-        PathBuf::from(input)
+        let bkp_dir = config.backup_dir;
+
+        let files = utils::get_files_start_with(&bkp_dir, &container_info.name, true)?;
+
+        if files.is_empty() {
+            error!("No backup files found");
+            println!("No backup files found");
+            return Ok(());
+        }
+
+        if files.len() == 1 {
+            files[0].clone()
+        } else {
+            let selection = Select::new()
+                .with_prompt("Select backup file")
+                .items(&files.iter().map(|f| f.display()).collect::<Vec<_>>())
+                .default(0)
+                .interact()?;
+            files[selection].clone()
+        }
     } else {
         match input {
             Some(input) => PathBuf::from(input),
