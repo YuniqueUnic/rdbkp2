@@ -38,6 +38,7 @@ walkdir = "2.4.0"
 # 时间处理
 chrono = "0.4.34"
 winapi = { version = "0.3.9", features = ["winerror"] }
+tempfile = "3.17.1"
 
 [profile.release]
 lto = true

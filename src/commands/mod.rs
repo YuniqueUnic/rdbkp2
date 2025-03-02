@@ -111,6 +111,10 @@ async fn stop_container_timeout(
     }
 }
 
+/*
+ * backup
+ */
+
 pub async fn backup(
     container: Option<String>,
     file: Option<String>,
@@ -333,6 +337,10 @@ async fn select_volumes(
     Ok((total_volumes, selected_volumes))
 }
 
+/*
+ * restore
+ */
+
 // TODO
 pub async fn restore(
     container: Option<String>,
@@ -366,6 +374,31 @@ pub async fn restore(
     // 如果容器正在运行或重启中，则停止容器
     stop_container_timeout(&client, &container_info, timeout).await?;
 
+    // 恢复卷 (s)
+    restore_volumes(&container_info, &file_path, output, interactive).await?;
+
+    // 如果需要重启容器，则重启容器
+    if restart {
+        info!(
+            container_name = ?container_info.name,
+            "Restarting container"
+        );
+        client.restart_container(&container_info.id).await?;
+        info!(
+            container_name = ?container_info.name,
+            "Container restarted"
+        );
+    }
+
+    Ok(())
+}
+
+async fn restore_volumes(
+    container_info: &ContainerInfo,
+    file_path: &PathBuf,
+    output: Option<String>,
+    interactive: bool,
+) -> Result<()> {
     // Read mapping from backup file
     let mapping_content = utils::read_file_from_archive(&file_path, MAPPING_FILE_NAME)?;
     let backup_mapping: BackupMapping = toml::from_str(&mapping_content)?;
@@ -380,27 +413,28 @@ pub async fn restore(
         );
     }
 
-    // If output specified, use the specified path
-    let output_dir = if let Some(output) = output {
-        PathBuf::from(output)
+    // if interactive, check if the output is a directory
+    let user_select_volumes = if interactive && output.is_none() {
+        select_volumes_prompt(&backup_mapping.volumes)?
     } else {
-        // Use the volume's source path from mapping
-        let user_input = Input::new()
-            .with_prompt("Restore output directory")
-            .default(
-                backup_mapping.volumes[0]
-                    .source
-                    .to_string_lossy()
-                    .to_string(),
-            )
-            .allow_empty(false)
-            .interact_text()?;
-        PathBuf::from(user_input)
+        backup_mapping.volumes
     };
 
-    // 确保输出目录存在
-    debug!(?output_dir, "Ensuring output directory exists");
-    ensure_dir_exists(&output_dir)?;
+    // If output specified, use the specified path
+    let output_dirs = if let Some(output) = &output {
+        vec![PathBuf::from(output)]
+    } else {
+        user_select_volumes
+            .iter()
+            .map(|v| v.source.clone())
+            .collect::<Vec<_>>()
+    };
+
+    // 确保输出目录 (s) 存在
+    debug!(?output_dirs, "Ensuring output directory exists");
+    for output_dir in &output_dirs {
+        ensure_dir_exists(output_dir)?;
+    }
 
     // 确认恢复
     if interactive {
@@ -419,25 +453,17 @@ pub async fn restore(
         }
     }
 
-    // 执行恢复
-    restore_volume(&container_info, &file_path, &output_dir).await?;
+    if output.is_some() && output_dirs.len() == 1 {
+        unpack_archive_to(&container_info, &file_path, &output_dirs[0]).await?;
+    } else {
+        // 执行恢复 TODO
+        unpack_archive_move(&container_info, &file_path, &user_select_volumes).await?;
+    }
 
     info!(
         container_name = ?container_info.name,
         "Restore operation completed successfully"
     );
-
-    if restart {
-        info!(
-            container_name = ?container_info.name,
-            "Restarting container"
-        );
-        client.restart_container(&container_info.id).await?;
-        info!(
-            container_name = ?container_info.name,
-            "Container restarted"
-        );
-    }
 
     Ok(())
 }
@@ -508,56 +534,7 @@ async fn get_container_by_name_or_id(
         })
 }
 
-async fn backup_volume(
-    container: &ContainerInfo,
-    volume: &VolumeInfo,
-    output_dir: &Path,
-) -> Result<()> {
-    info!(
-        container_name = ?container.name,
-        volume_name = ?volume.name,
-        "Starting volume backup"
-    );
-
-    println!(
-        "Backing up volume {} from container {} to {}",
-        volume.name,
-        container.name,
-        output_dir.to_string_lossy()
-    );
-
-    // 创建备份文件名
-    debug!("Creating backup filename");
-    let backup_filename =
-        create_timestamp_filename(&format!("{}_{}", container.name, volume.name), ".tar.xz");
-    let backup_path = output_dir.join(backup_filename);
-
-    debug!(
-        source = ?volume.source,
-        destination = ?backup_path,
-        "Compressing volume directory"
-    );
-
-    // TODO
-    let mapping_content = toml::to_string("&backup_mapping")?;
-
-    // 压缩卷目录
-    utils::compress_with_memory_file(
-        &[&volume.source],
-        &backup_path,
-        &[("mapping.toml", &mapping_content)],
-        &[".git", "node_modules", "target"],
-    )?;
-
-    info!(
-        backup_file = ?backup_path,
-        "Volume backup completed successfully"
-    );
-    println!("Backup completed: {}", backup_path.to_string_lossy());
-    Ok(())
-}
-
-async fn restore_volume(
+async fn unpack_archive_to(
     container: &ContainerInfo,
     file_path: &PathBuf,
     output_dir: &PathBuf,
@@ -585,5 +562,34 @@ async fn restore_volume(
 
     info!("Volume restore completed successfully");
     println!("Restore completed to {}", output_dir.to_string_lossy());
+    Ok(())
+}
+
+async fn unpack_archive_move(
+    container: &ContainerInfo,
+    file_path: &PathBuf,
+    volumes_mapping: &[VolumeInfo],
+) -> Result<()> {
+    log_print!(
+        "INFO",
+        "Unpacking archive and moving to volumes for container {}",
+        container.name
+    );
+    let temp_dir = tempfile::tempdir()?;
+    let temp_dir_path = temp_dir.into_path();
+
+    // 解压备份文件到卷目录
+    extract_archive(file_path, &temp_dir_path)?;
+
+    // 根据 mapping 文件中的 volumes 信息，将文件移动到对应的卷目录
+    // TODO: need to check it work properly
+    for volume in volumes_mapping {
+        let volume_path = temp_dir_path.join(&volume.name);
+        let destination_path = volume.source.join(&volume.name);
+        std::fs::rename(volume_path, destination_path)?;
+    }
+
+    info!("Volume restore completed successfully");
+    // println!("Restore completed to {}", output_dir.to_string_lossy());
     Ok(())
 }
