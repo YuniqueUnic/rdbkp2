@@ -216,7 +216,6 @@ pub struct VolumeInfo {
 }
 
 #[cfg(test)]
-#[ignore = "This test needs a really docker environment, manual test is recommended"]
 mod tests {
     use super::*;
     use crate::{
@@ -228,12 +227,14 @@ mod tests {
     use tracing::debug;
 
     #[tokio::test]
+    #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_docker_client_creation() -> Result<()> {
         let _client = DockerClient::new().await?;
         Ok(())
     }
 
     #[tokio::test]
+    #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_list_containers() -> Result<()> {
         let client = DockerClient::new().await?;
         let containers = client.list_containers().await?;
@@ -242,6 +243,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_get_container_volumes() -> Result<()> {
         crate::init_test_log();
 
