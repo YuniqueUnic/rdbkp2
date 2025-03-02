@@ -53,6 +53,9 @@ dev:
 release level x="": git-commit
     cargo release {{level}} --no-publish --no-verify {{x}} -v
 
+release-only level x="":
+    cargo release {{level}} --no-publish --no-verify {{x}} -v
+
 
 # 发布到 crates.io
 publish:
