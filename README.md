@@ -51,7 +51,7 @@ rdbkp2 restore -i
 命令行模式：
 
 ```bash
-rdbkp2 restore -c container_name -i /path/to/backup/file
+rdbkp2 restore -c container_name -f /path/to/backup/file
 ```
 
 ### 命令行补全
@@ -141,7 +141,7 @@ tls = false
 | 参数                | 描述                    |
 |---------------------|-------------------------|
 | `-c, --container`   | 容器名称或 ID           |
-| `-f, --file`        | 备份文件路径            |
+| `-f, --file`        | 需要备份的文件(夹)路径   |
 | `-o, --output`      | 输出目录                |
 |                     | 继承自通用参数          |
 | `-i, --interactive` | 使用交互式模式          |
@@ -154,7 +154,7 @@ tls = false
 | 参数                | 描述                    |
 |---------------------|-------------------------|
 | `-c, --container`   | 容器名称或 ID           |
-| `-f, --file`        | 备份文件路径            |
+| `-f, --file`        | 备份文件(压缩包)路径     |
 | `-o, --output`      | 输出目录                |
 |                     | 继承自通用参数          |
 | `-i, --interactive` | 使用交互式模式          |
