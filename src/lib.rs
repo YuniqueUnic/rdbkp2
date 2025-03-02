@@ -29,23 +29,29 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
+    /// 是否使用交互模式
+    #[arg(global = true, short, long, default_value = "true")]
+    interactive: bool,
+
     /// 是否在操作 (备份/恢复) 后重启容器
-    #[arg(global = true, short, long)]
+    #[arg(global = true, short, long, default_value = "false")]
     restart: bool,
 
     /// 停止容器超时时间 (秒)
     #[arg(global = true, short, long, default_value = "30")]
     timeout: u64,
 
-    /// 排除模式
-    ///
-    /// 备份时将排除包含这些模式的文件/目录
+    /// 排除模式：备份时将排除包含这些模式的文件/目录
     #[arg(global = true, short, long, default_value = ".git,node_modules,target")]
     exclude: String,
 
     /// 是否自动确认
-    #[arg(global = true, short, long)]
+    #[arg(global = true, short, long, default_value = "false")]
     yes: bool,
+
+    /// 是否显示详细日志
+    #[arg(global = true, short, long, default_value = "false")]
+    verbose: bool,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -54,6 +60,17 @@ enum Shell {
     Fish,
     Zsh,
     PowerShell,
+}
+
+impl Into<clap_complete::aot::Shell> for Shell {
+    fn into(self) -> clap_complete::aot::Shell {
+        match self {
+            Shell::Bash => clap_complete::aot::Shell::Bash,
+            Shell::Fish => clap_complete::aot::Shell::Fish,
+            Shell::Zsh => clap_complete::aot::Shell::Zsh,
+            Shell::PowerShell => clap_complete::aot::Shell::PowerShell,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -84,10 +101,6 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value = "./backup/")]
         output: Option<String>,
-
-        /// 是否使用交互模式
-        #[arg(short, long)]
-        interactive: bool,
     },
 
     /// 恢复 Docker 容器数据
@@ -110,10 +123,6 @@ enum Commands {
         /// 备份文件恢复输出路径
         #[arg(short, long)]
         output: Option<String>,
-
-        /// 是否使用交互模式
-        #[arg(short, long)]
-        interactive: bool,
     },
 
     /// 列出可用的 Docker 容器
@@ -128,12 +137,12 @@ enum Commands {
 }
 
 #[instrument(level = "INFO")]
-pub fn init_log() -> Result<()> {
+pub fn init_log(log_level: Level) -> Result<()> {
     // 初始化日志
     fmt()
         .with_env_filter(
             EnvFilter::builder()
-                .with_default_directive(Level::INFO.into())
+                .with_default_directive(log_level.into())
                 .from_env_lossy(),
         )
         .with_target(true)
@@ -169,11 +178,20 @@ pub async fn run() -> Result<()> {
 
     // 解析命令行参数
     let cli = Cli::parse();
+    let interactive = cli.interactive;
     let timeout = cli.timeout;
     let restart = cli.restart;
     let exclude = cli.exclude;
     let exclude_patterns = exclude.split(',').collect::<Vec<&str>>();
     let yes = cli.yes;
+    let verbose = cli.verbose;
+
+    // 设置日志级别，初始化日志
+    let log_level = if verbose { Level::DEBUG } else { Level::ERROR };
+    init_log(log_level)?;
+
+    // 加载配置
+    load_config()?;
 
     // 根据子命令执行相应的操作
     match cli.command {
@@ -181,7 +199,6 @@ pub async fn run() -> Result<()> {
             container,
             file,
             output,
-            interactive,
         } => {
             info!(
                 ?container,
@@ -206,7 +223,6 @@ pub async fn run() -> Result<()> {
             container,
             file,
             output,
-            interactive,
         } => {
             info!(
                 ?container,
@@ -225,41 +241,12 @@ pub async fn run() -> Result<()> {
             info!(?shell, "Generating shell completions");
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
-
-            match shell {
-                Shell::Bash => {
-                    clap_complete::generate(
-                        clap_complete::aot::Bash,
-                        &mut cmd,
-                        &name,
-                        &mut io::stdout(),
-                    );
-                }
-                Shell::Fish => {
-                    clap_complete::generate(
-                        clap_complete::aot::Fish,
-                        &mut cmd,
-                        &name,
-                        &mut io::stdout(),
-                    );
-                }
-                Shell::Zsh => {
-                    clap_complete::generate(
-                        clap_complete::aot::Zsh,
-                        &mut cmd,
-                        &name,
-                        &mut io::stdout(),
-                    );
-                }
-                Shell::PowerShell => {
-                    clap_complete::generate(
-                        clap_complete::aot::PowerShell,
-                        &mut cmd,
-                        &name,
-                        &mut io::stdout(),
-                    );
-                }
-            }
+            clap_complete::generate(
+                clap_complete::aot::Shell::from(shell.into()),
+                &mut cmd,
+                &name,
+                &mut io::stdout(),
+            );
         }
     }
 

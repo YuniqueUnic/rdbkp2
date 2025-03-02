@@ -124,7 +124,7 @@ pub async fn backup(
     interactive: bool,
     timeout: u64,
     exclude_patterns: &[&str],
-    yes: bool,
+    _yes: bool,
 ) -> Result<()> {
     info!(
         ?container,

@@ -148,6 +148,7 @@ impl Config {
     }
 
     /// 更新全局配置
+    #[allow(dead_code)]
     pub fn update<F>(&self, f: F) -> Result<()>
     where
         F: FnOnce(&mut Config),
