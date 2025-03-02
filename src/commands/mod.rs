@@ -3,6 +3,7 @@ mod prompt;
 use crate::config::Config;
 use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
 use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, extract_archive};
+use crate::{log_bail, log_print};
 use prompt::*;
 
 use anyhow::Result;
@@ -267,9 +268,9 @@ fn backup_items(
     // 备份完成
     info!(
         backup_file = ?backup_path,
-        "All volumes backup completed successfully"
+        "Volumes backup completed successfully"
     );
-    println!("All volumes backup completed: {}", backup_path.display());
+    println!("Volumes backup completed: {}", backup_path.display());
     Ok(())
 }
 
@@ -361,44 +362,18 @@ pub async fn restore(
     };
 
     // 获取备份文件路径
-    debug!(container_name = ?container_info.name, "Getting backup file path");
-    let file_path = if interactive || input.is_none() {
-        let bkp_dir = config.backup_dir;
-
-        let files = utils::get_files_start_with(&bkp_dir, &container_info.name, true)?;
-
-        if files.is_empty() {
-            error!("No backup files found");
-            println!("No backup files found");
-            return Ok(());
-        }
-
-        if files.len() == 1 {
-            files[0].clone()
-        } else {
-            let selection = Select::new()
-                .with_prompt(prompt_select!("Select one file to restore"))
-                .items(&files.iter().map(|f| f.display()).collect::<Vec<_>>())
-                .default(0)
-                .interact()?;
-            files[selection].clone()
-        }
-    } else {
-        match input {
-            Some(input) => PathBuf::from(input),
-            None => {
-                error!("Backup file path is required");
-                println!("Backup file path is required");
-                return Ok(());
-            }
-        }
-    };
+    let file_path = parse_restore_file(input, interactive, config, &container_info)?;
 
     // 确保备份文件存在
     debug!(file_path = ?file_path, "Ensuring backup file exists");
     if !file_path.exists() {
-        error!("Backup file does not exist: {}", file_path.display());
-        println!("Backup file does not exist: {}", file_path.display());
+        log_print!(
+            "ERROR",
+            "Backup file does not exist: {}",
+            file_path.display()
+        );
+        // error!("Backup file does not exist: {}", file_path.display());
+        // println!("Backup file does not exist: {}", file_path.display());
         return Ok(());
     }
 
@@ -483,6 +458,59 @@ pub async fn restore(
     }
 
     Ok(())
+}
+
+fn parse_restore_file(
+    input: Option<String>,
+    interactive: bool,
+    config: Config,
+    container_info: &ContainerInfo,
+) -> Result<PathBuf, anyhow::Error> {
+    debug!(container_name = ?container_info.name, "Getting backup file path");
+    let file_path = if interactive || input.is_none() {
+        if let Some(input) = input {
+            let file = PathBuf::from(input);
+            if !file.exists() || !file.is_file() {
+                log_bail!(
+                    "ERROR",
+                    "Backup file does not exist or is not a file: {}",
+                    file.display()
+                );
+            }
+            file
+        } else {
+            let bkp_dir = config.backup_dir;
+
+            let files = utils::get_files_start_with(&bkp_dir, &container_info.name, true)?;
+
+            if files.is_empty() {
+                log_bail!(
+                    "ERROR",
+                    "No backup files found for container {}",
+                    container_info.name
+                );
+            }
+
+            if files.len() == 1 {
+                files[0].clone()
+            } else {
+                let selection = Select::new()
+                    .with_prompt(prompt_select!("Select one file to restore"))
+                    .items(&files.iter().map(|f| f.display()).collect::<Vec<_>>())
+                    .default(0)
+                    .interact()?;
+                files[selection].clone()
+            }
+        }
+    } else {
+        match input {
+            Some(input) => PathBuf::from(input),
+            None => {
+                log_bail!("ERROR", "Backup file path is required");
+            }
+        }
+    };
+    Ok(file_path)
 }
 
 async fn get_container_by_name_or_id(

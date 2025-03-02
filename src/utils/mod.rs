@@ -1,3 +1,5 @@
+pub(crate) mod out;
+
 use anyhow::Result;
 use std::fs::{self, File};
 use std::io::Read;
