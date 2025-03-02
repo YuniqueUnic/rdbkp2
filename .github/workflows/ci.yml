@@ -130,23 +130,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate changelog
-        id: changelog
+      - name: Generate changelog file
         run: |
-          # Get the previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          # Get the previous tag or use the initial commit if no tag exists
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
           
-          if [ -z "$PREV_TAG" ]; then
-            # If no previous tag exists, get all commits
-            echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-            git log --pretty=format:"* %s" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-          else
-            # Get commits between the previous tag and current tag
-            echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-            git log ${PREV_TAG}..HEAD --pretty=format:"* %s" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-          fi
+          # Create a changelog file
+          echo "# Changes in this release" > changelog.md
+          echo "" >> changelog.md
+          
+          # Add commit messages to the changelog file
+          git log ${PREV_TAG}..HEAD --pretty=format:"* %s" | sed 's/^/- /' >> changelog.md
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -159,11 +153,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: artifacts/**/*
-          body: |
-            Release ${{ github.ref_name }}
-
-            Changes:
-            ${{ env.CHANGELOG }}
+          body_path: changelog.md
           draft: false
           prerelease: false
 
