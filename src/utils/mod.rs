@@ -94,8 +94,10 @@ fn append_items<P: AsRef<Path>>(
     tar: &mut tar::Builder<XzEncoder<File>>,
 ) -> Result<usize> {
     let mut items_count = 0;
-    if source.as_ref().is_dir() {
-        let walker = WalkDir::new(source.as_ref())
+    let source = source.as_ref();
+
+    if source.is_dir() {
+        let walker = WalkDir::new(source)
             .follow_links(true)
             .into_iter()
             .filter_entry(|e| {
@@ -109,17 +111,20 @@ fn append_items<P: AsRef<Path>>(
 
         for entry in walker.filter_map(|e| e.ok()) {
             if entry.path().is_file() {
-                let name = entry.path().strip_prefix(source.as_ref())?;
+                let name = entry
+                    .path()
+                    .strip_prefix(source.parent().unwrap_or(source))?;
+                debug!(path = ?entry.path(), name = ?name, "Adding file to archive");
                 tar.append_path_with_name(entry.path(), name)?;
                 items_count += 1;
             }
         }
-    } else if source.as_ref().is_file() {
+    } else if source.is_file() {
         let name = source
-            .as_ref()
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("Failed to get file name"))?;
-        tar.append_path_with_name(&source, name)?;
+        debug!(path = ?source, name = ?name, "Adding file to archive");
+        tar.append_path_with_name(source, name)?;
         items_count += 1;
     }
 
@@ -173,10 +178,23 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
     let mut archive = tar::Archive::new(xz);
 
     debug!(?target_dir, "Unpacking archive");
-    archive.unpack(target_dir).map_err(|e| {
-        error!(?e, ?target_dir, "Failed to unpack archive");
-        e
-    })?;
+    ensure_dir_exists(target_dir)?;
+
+    // Unpack each entry while preserving paths
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        let target_path = target_dir.join(path);
+
+        if let Some(parent) = target_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+
+        debug!(path = ?target_path, "Extracting file");
+        entry.unpack(&target_path)?;
+    }
 
     info!(
         ?archive_path,

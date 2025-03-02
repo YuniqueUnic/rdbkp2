@@ -712,7 +712,7 @@ mod tests {
             &container_info,
             backup_dir.path().to_path_buf(),
             volumes.len(),
-            volumes,
+            volumes.clone(),
             &[],
         )?;
 
@@ -730,18 +730,19 @@ mod tests {
         .await?;
 
         // 验证恢复的文件
-        assert!(restore_dir.path().join("vol1").join("test1.txt").exists());
-        assert!(restore_dir.path().join("vol2").join("test2.txt").exists());
+        for volume in volumes {
+            let source_path = volume.source;
+            let relative_path = source_path.strip_prefix(source_temp_dir.path())?;
+            let restore_path = restore_dir.path().join(relative_path);
 
-        // 验证文件内容
-        assert_eq!(
-            fs::read_to_string(restore_dir.path().join("vol1").join("test1.txt"))?,
-            "content1"
-        );
-        assert_eq!(
-            fs::read_to_string(restore_dir.path().join("vol2").join("test2.txt"))?,
-            "content2"
-        );
+            assert!(restore_path.exists());
+            assert!(restore_path.join("test1.txt").exists());
+
+            // 验证文件内容
+            let original_content = fs::read_to_string(source_path.join("test1.txt"))?;
+            let restored_content = fs::read_to_string(restore_path.join("test1.txt"))?;
+            assert_eq!(original_content, restored_content);
+        }
 
         Ok(())
     }
@@ -796,7 +797,7 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let base_path = temp_dir.path();
 
-        // 创建测试文件结构
+        // Create test file structure
         fs::create_dir_all(base_path.join("vol1/node_modules"))?;
         fs::create_dir_all(base_path.join("vol1/.git"))?;
         fs::write(base_path.join("vol1/test.txt"), "test content")?;
@@ -820,7 +821,7 @@ mod tests {
 
         let output_dir = TempDir::new()?;
 
-        // 使用排除模式进行备份
+        // Backup with exclude patterns
         backup_items(
             &container_info,
             output_dir.path().to_path_buf(),
@@ -829,13 +830,13 @@ mod tests {
             &[".git", "node_modules"],
         )?;
 
-        // 验证备份文件
+        // Get backup file
         let backup_file = fs::read_dir(output_dir.path())?.next().unwrap()?.path();
 
-        // 创建恢复目录
+        // Create restore directory
         let restore_dir = TempDir::new()?;
 
-        // 恢复备份
+        // Restore backup
         restore_volumes(
             &container_info,
             &backup_file,
@@ -845,11 +846,15 @@ mod tests {
         )
         .await?;
 
-        // 验证排除的目录不存在
+        // Verify restored structure
+        assert!(restore_dir.path().join("vol1").exists());
+        assert!(restore_dir.path().join("vol1/test.txt").exists());
         assert!(!restore_dir.path().join("vol1/node_modules").exists());
         assert!(!restore_dir.path().join("vol1/.git").exists());
-        // 验证正常文件存在
-        assert!(restore_dir.path().join("vol1/test.txt").exists());
+
+        // Verify content
+        let content = fs::read_to_string(restore_dir.path().join("vol1/test.txt"))?;
+        assert_eq!(content, "test content");
 
         Ok(())
     }
