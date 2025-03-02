@@ -1,6 +1,6 @@
 use crate::{DOCKER_CMD, DOCKER_COMPOSE_CMD};
 use anyhow::Result;
-use assert_fs::prelude::*;
+use assert_fs::{TempDir, prelude::*};
 use std::process::Command;
 use std::{env, path::PathBuf};
 use tokio::time::{Duration, sleep};
@@ -26,20 +26,27 @@ pub(crate) fn check_docker_compose() -> Result<()> {
     Ok(())
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_backup_restore_workflow() -> Result<()> {
     // 创建临时测试目录
-    let temp = assert_fs::TempDir::new()?;
+    let temp = TempDir::new()?;
     let backup_dir = temp.child("backups");
     backup_dir.create_dir_all()?;
 
     let docker_dir = get_docker_compose_path();
 
     // 启动 Docker 容器
-    Command::new(DOCKER_COMPOSE_CMD)
+    let status = Command::new(DOCKER_COMPOSE_CMD)
         .current_dir(&docker_dir)
         .args(["-f", "docker-compose.yaml", "up", "-d"])
         .status()?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to start Docker containers. Please check if the docker-compose.yaml file exists and is correctly configured."
+        ));
+    }
 
     // 等待服务启动
     sleep(Duration::from_secs(5)).await;

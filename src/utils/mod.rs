@@ -316,8 +316,9 @@ pub fn get_files_start_with<P: AsRef<Path>>(
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use std::path::Path;
+/// use crate::utils::ensure_dir_exists;
 /// ensure_dir_exists(Path::new("/tmp/test"))?; // 创建目录
 /// ensure_dir_exists(Path::new("/tmp/test/file.txt"))?; // 创建父目录
 /// ```
@@ -380,8 +381,9 @@ pub fn ensure_file_exists<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_fs::prelude::*;
+    use assert_fs::{TempDir, prelude::*};
     use predicates::prelude::*;
+
     fn assert_content_match<P: AsRef<Path>>(a: P, b: P) -> Result<()> {
         let a = a.as_ref();
         let b = b.as_ref();
@@ -402,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_ensure_dir_exists() -> Result<()> {
-        let temp = assert_fs::TempDir::new()?;
+        let temp = TempDir::new()?;
         let test_dir = temp.child("test_dir");
 
         ensure_dir_exists(&test_dir)?;
@@ -417,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_compress_and_extract() -> Result<()> {
-        let temp = assert_fs::TempDir::new()?;
+        let temp = TempDir::new()?;
 
         // 创建测试文件
         let source_dir = temp.child("source");
@@ -437,7 +439,7 @@ mod tests {
         unpack_archive(&archive, &extract_dir)?;
 
         // 验证
-        let extracted_file = extract_dir.child("test.txt");
+        let extracted_file = extract_dir.child(format!("{}/{}", "source", "test.txt"));
         extracted_file.assert(predicate::path::exists());
         extracted_file.assert(predicate::str::contains("Hello, World!"));
 
@@ -446,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_compress_and_extract_with_input() -> Result<()> {
-        let temp = assert_fs::TempDir::new()?;
+        let temp = TempDir::new()?;
         let source = temp.child("source");
         let extract = temp.child("extract");
         source.create_dir_all()?;
@@ -459,14 +461,21 @@ mod tests {
         let archive_path = temp.child("archive.tar.xz");
         compress_with_memory_file(&[&source], &archive_path, &[], &[])?;
         unpack_archive(&archive_path, &extract)?;
-        assert_content_match(&file, &extract.child(file.file_name().unwrap()))?;
+        assert_content_match(
+            &file,
+            &extract.child(format!(
+                "{}/{}",
+                "source",
+                file.file_name().unwrap().to_string_lossy()
+            )),
+        )?;
 
         Ok(())
     }
 
     #[test]
     fn test_read_file_from_archive() -> Result<()> {
-        let temp = assert_fs::TempDir::new()?;
+        let temp = TempDir::new()?;
         let archive = temp.child("test.tar.xz");
 
         // 创建一个包含内存文件的压缩包
@@ -487,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_compress_with_memory_file() -> Result<()> {
-        let temp = assert_fs::TempDir::new()?;
+        let temp = TempDir::new()?;
 
         // 创建源文件
         let source_dir = temp.child("source");
@@ -518,7 +527,7 @@ mod tests {
         memory_file2.assert(predicate::str::contains("Memory file 2 content"));
 
         // 检查源文件
-        let source_file = extract_dir.child("source.txt");
+        let source_file = extract_dir.child(format!("{}/{}", "source", "source.txt"));
         source_file.assert(predicate::path::exists());
         source_file.assert(predicate::str::contains("Source file content"));
 

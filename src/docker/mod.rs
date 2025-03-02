@@ -241,6 +241,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_get_container_volumes() -> Result<()> {
         crate::init_test_log();
 

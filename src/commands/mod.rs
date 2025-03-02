@@ -657,7 +657,7 @@ mod tests {
     // 测试备份功能
     #[test]
     async fn test_backup_items() -> Result<()> {
-        let (temp_dir, volumes) = setup_test_volumes().await?;
+        let (_temp_dir, volumes) = setup_test_volumes().await?;
         let output_dir = TempDir::new()?;
 
         let container_info = ContainerInfo {
@@ -696,7 +696,7 @@ mod tests {
     // 测试恢复功能
     #[test]
     async fn test_restore_volumes() -> Result<()> {
-        // 先创建并备份测试数据
+        // Create and backup test data
         let (source_temp_dir, volumes) = setup_test_volumes().await?;
         let backup_dir = TempDir::new()?;
         let restore_dir = TempDir::new()?;
@@ -707,7 +707,7 @@ mod tests {
             status: "running".to_string(),
         };
 
-        // 执行备份
+        // Backup
         backup_items(
             &container_info,
             backup_dir.path().to_path_buf(),
@@ -716,10 +716,10 @@ mod tests {
             &[],
         )?;
 
-        // 获取备份文件路径
+        // Get backup file
         let backup_file = fs::read_dir(backup_dir.path())?.next().unwrap()?.path();
 
-        // 测试恢复到指定目录
+        // Restore to specified directory
         restore_volumes(
             &container_info,
             &backup_file,
@@ -729,18 +729,21 @@ mod tests {
         )
         .await?;
 
-        // 验证恢复的文件
+        // Verify restored files
         for volume in volumes {
             let source_path = volume.source;
             let relative_path = source_path.strip_prefix(source_temp_dir.path())?;
             let restore_path = restore_dir.path().join(relative_path);
 
             assert!(restore_path.exists());
-            assert!(restore_path.join("test1.txt").exists());
 
-            // 验证文件内容
-            let original_content = fs::read_to_string(source_path.join("test1.txt"))?;
-            let restored_content = fs::read_to_string(restore_path.join("test1.txt"))?;
+            // Get the test file name based on volume name
+            let test_file = format!("test{}.txt", volume.name.strip_prefix("vol").unwrap());
+            assert!(restore_path.join(&test_file).exists());
+
+            // Verify content
+            let original_content = fs::read_to_string(source_path.join(&test_file))?;
+            let restored_content = fs::read_to_string(restore_path.join(&test_file))?;
             assert_eq!(original_content, restored_content);
         }
 
@@ -750,7 +753,7 @@ mod tests {
     // 测试容器不匹配的情况
     #[test]
     async fn test_restore_container_mismatch() -> Result<()> {
-        let (source_temp_dir, volumes) = setup_test_volumes().await?;
+        let (_source_temp_dir, volumes) = setup_test_volumes().await?;
         let backup_dir = TempDir::new()?;
 
         // 使用一个容器创建备份
