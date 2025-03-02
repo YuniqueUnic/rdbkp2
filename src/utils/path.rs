@@ -190,7 +190,9 @@ mod tests {
             symlink(&real_path, &link_path).unwrap();
             let resolved = ensure_absolute_canonical(&link_path).unwrap();
             // #[cfg(not(target_os = "macos"))]
-            assert!(resolved.ends_with(real_path.path()));
+            let real_path_str = real_path.to_string_lossy().to_string();
+            let resolved_str = resolved.to_string_lossy().to_string();
+            assert!(resolved_str.ends_with(&real_path_str));
         }
     }
 
