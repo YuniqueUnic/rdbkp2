@@ -183,21 +183,27 @@ pub async fn backup(
     Ok(())
 }
 
+/// 获取输出目录
 fn parse_output_dir(
     output: Option<String>,
     interactive: bool,
     container_info: &ContainerInfo,
 ) -> Result<PathBuf> {
+    debug!(container_name = ?container_info.name, "Getting output directory");
     let config = Config::global()?;
 
-    // 获取输出目录
-    debug!(container_name = ?container_info.name, "Getting output directory");
-    let output_dir = if interactive || output.is_none() {
-        let default_dir = if let Some(output) = output {
-            output
-        } else {
-            config.backup_dir.to_string_lossy().to_string()
-        };
+    // 如果指定了输出目录，则直接使用该目录
+    if let Some(output) = output {
+        let output_dir = PathBuf::from(output);
+        ensure_dir_exists(&output_dir)?;
+        // 将输出目录转换为绝对路径
+        let output_dir = utils::absolute_canonicalize_path(&output_dir)?;
+        return Ok(output_dir);
+    }
+
+    // 如果未指定输出目录，则交互式获取输出目录
+    if interactive {
+        let default_dir = config.backup_dir.to_string_lossy().to_string();
 
         let input: String = Input::new()
             .with_prompt("Backup output directory")
@@ -205,19 +211,19 @@ fn parse_output_dir(
             .allow_empty(false)
             .interact_text()?;
 
-        PathBuf::from(input)
-    } else {
-        match output {
-            Some(output) => PathBuf::from(output),
-            None => {
-                log_bail!("ERROR", "Output directory is required");
-            }
-        }
-    };
+        let output_dir = PathBuf::from(input);
 
-    // 确保输出目录存在
-    debug!(?output_dir, "Ensuring output directory exists");
-    ensure_dir_exists(&output_dir)?;
+        // 确保输出目录存在
+        ensure_dir_exists(&output_dir)?;
+        // 将输出目录转换为绝对路径
+        let output_dir = utils::absolute_canonicalize_path(&output_dir)?;
+        return Ok(output_dir);
+    }
+
+    // 如果未指定输出目录，则使用默认目录
+    let output_dir = PathBuf::from(config.backup_dir);
+    // 将输出目录转换为绝对路径
+    let output_dir = utils::absolute_canonicalize_path(&output_dir)?;
     Ok(output_dir)
 }
 
@@ -284,6 +290,8 @@ async fn select_volumes(
     // 处理单文件备份场景
     if let Some(file) = file {
         let file_path = PathBuf::from(file);
+        // 将文件路径转换为绝对路径
+        let file_path = utils::absolute_canonicalize_path(&file_path)?;
         if !file_path.exists() {
             log_bail!(
                 "ERROR",
@@ -413,6 +421,8 @@ async fn restore_volumes(
     if let Some(output_path) = output {
         let output_path = PathBuf::from(output_path);
         ensure_dir_exists(&output_path)?;
+        // 将输出路径转换为绝对路径
+        let output_path = utils::absolute_canonicalize_path(&output_path)?;
 
         if !yes && interactive {
             let confirmed = Confirm::new()
@@ -562,32 +572,51 @@ fn parse_restore_file(
     let config = Config::global()?;
     debug!(container_name = ?container_info.name, "Getting backup file path");
 
-    // 如果提供了输入路径且不是交互模式，直接返回
-    if !interactive && input.is_some() {
-        let file = PathBuf::from(input.unwrap());
-        let file = utils::ensure_file_exists(&file)?;
-        return Ok(file);
-    }
-
-    // 处理输入路径
+    // 如果提供了输入路径，处理输入路径，直接返回
     if let Some(input) = input {
         let file = PathBuf::from(input);
         let file = utils::ensure_file_exists(&file)?;
+        // 将文件路径转换为绝对路径
+        let file = utils::absolute_canonicalize_path(&file)?;
         return Ok(file);
     }
 
     // 从备份目录查找文件
     let files = utils::get_files_start_with(&config.backup_dir, &container_info.name, true)?;
+
+    // 如果找不到备份文件，则提示用户输入备份文件路径
     if files.is_empty() {
-        log_bail!(
-            "ERROR",
-            "No backup files found for container {}",
+        log_print!(
+            "WARN",
+            "❌ No backup files found for container {}",
             container_info.name
         );
+        let input = Input::new()
+            .with_prompt("Please input the backup file path")
+            .allow_empty(false)
+            .validate_with(|input: &String| -> anyhow::Result<()> {
+                let file = PathBuf::from(input);
+                if !file.exists() {
+                    Err(anyhow::anyhow!(
+                        "File does not exist: {}",
+                        file.to_string_lossy()
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+            .with_initial_text(config.backup_dir.to_string_lossy().to_string())
+            .interact_text()?;
+        let file = PathBuf::from(input);
+        let file = utils::ensure_file_exists(&file)?;
+
+        // 将文件路径转换为绝对路径
+        let file = utils::absolute_canonicalize_path(&file)?;
+        return Ok(file);
     }
 
     // 如果只有一个文件或需要选择
-    Ok(if files.len() == 1 {
+    let file = if files.len() == 1 {
         files[0].clone()
     } else {
         let selection = Select::new()
@@ -601,7 +630,11 @@ fn parse_restore_file(
             .default(0)
             .interact()?;
         files[selection].clone()
-    })
+    };
+
+    // 将文件路径转换为绝对路径
+    let file = utils::absolute_canonicalize_path(&file)?;
+    Ok(file)
 }
 
 async fn get_container_by_name_or_id(

@@ -1,4 +1,8 @@
-pub(crate) mod out;
+mod out;
+mod path;
+
+pub(crate) use out::*;
+pub(crate) use path::*;
 
 use anyhow::Result;
 use std::fs::{self, File};
@@ -8,8 +12,6 @@ use tracing::{debug, error, info, warn};
 use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
-
-use crate::log_bail;
 
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
@@ -302,80 +304,6 @@ pub fn get_files_start_with<P: AsRef<Path>>(
     }
 
     Ok(files)
-}
-
-/// 确保目录存在，如果不存在则创建
-///
-/// # Arguments
-///
-/// * `path` - 要确保存在的目录路径。如果路径包含文件扩展名，则创建其父目录
-///
-/// # Returns
-///
-/// * `Result<()>` - 成功返回 Ok(()), 失败返回 Err
-///
-/// # Examples
-///
-/// ```ignore
-/// use std::path::Path;
-/// use crate::utils::ensure_dir_exists;
-/// ensure_dir_exists(Path::new("/tmp/test"))?; // 创建目录
-/// ensure_dir_exists(Path::new("/tmp/test/file.txt"))?; // 创建父目录
-/// ```
-pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
-    let path = path.as_ref();
-    debug!(path = ?path, "Ensuring directory exists");
-
-    if !path.exists() {
-        debug!(?path, "Creating directory");
-
-        if path.extension().is_none() {
-            // 如果路径没有扩展名，视为目录路径，创建所有必需目录
-            std::fs::create_dir_all(path).map_err(|e| {
-                error!(?e, ?path, "Failed to create directory");
-                e
-            })?;
-        } else {
-            // 如果路径有扩展名，视为文件路径，创建所有必需的父目录
-            let parent_dir = path.parent().ok_or_else(|| {
-                anyhow::anyhow!("Failed to get parent directory: {}", path.display())
-            })?;
-
-            std::fs::create_dir_all(parent_dir).map_err(|e| {
-                error!(?e, ?path, "Failed to create directory");
-                e
-            })?;
-        }
-
-        info!(?path, "Directory created successfully");
-    } else {
-        debug!(?path, "Directory already exists");
-    }
-    Ok(())
-}
-
-/// 确保文件存在
-///
-/// # Arguments
-///
-/// * `path` - 要确保存在的文件路径。
-///
-/// # Returns
-///
-/// * `Result<PathBuf>` - 成功返回 Ok(PathBuf)，失败返回 Err
-pub fn ensure_file_exists<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
-    let path = path.as_ref();
-    debug!(path = ?path, "Ensuring file exists");
-
-    let file = PathBuf::from(path);
-    if !file.exists() || !file.is_file() {
-        log_bail!(
-            "ERROR",
-            "File does not exist or is not a file: {}",
-            file.to_string_lossy()
-        );
-    }
-    Ok(file)
 }
 
 #[cfg(test)]

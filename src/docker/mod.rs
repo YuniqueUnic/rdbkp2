@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use tracing::{debug, error, info, warn};
 
+use crate::utils;
+
 pub struct DockerClient {
     client: Docker,
 }
@@ -86,9 +88,19 @@ impl DockerClient {
                     destination = ?destination,
                     "Found volume mount"
                 );
+                // TODO: 将 source 和 destination 转换为绝对路径
+                // 需要先找到对应的容器的根目录
+
+                let source = PathBuf::from(source);
+                let destination = PathBuf::from(destination);
+
+                // 将 source 和 destination 转换为绝对路径
+                let source = utils::absolute_canonicalize_path(&source)?;
+                let destination = utils::absolute_canonicalize_path(&destination)?;
+
                 volumes.push(VolumeInfo {
-                    source: PathBuf::from(source),
-                    destination: PathBuf::from(destination),
+                    source,
+                    destination,
                     name: mount.name.unwrap_or_default(),
                 });
             } else {
