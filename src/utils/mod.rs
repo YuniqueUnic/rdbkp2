@@ -9,6 +9,8 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
+use crate::log_bail;
+
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
 /// # Arguments
@@ -303,6 +305,7 @@ pub fn get_files_start_with<P: AsRef<Path>>(
 /// ```
 pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     let path = path.as_ref();
+    debug!(path = ?path, "Ensuring directory exists");
 
     if !path.exists() {
         debug!(?path, "Creating directory");
@@ -330,6 +333,30 @@ pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
         debug!(?path, "Directory already exists");
     }
     Ok(())
+}
+
+/// 确保文件存在
+///
+/// # Arguments
+///
+/// * `path` - 要确保存在的文件路径。
+///
+/// # Returns
+///
+/// * `Result<PathBuf>` - 成功返回 Ok(PathBuf)，失败返回 Err
+pub fn ensure_file_exists<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
+    let path = path.as_ref();
+    debug!(path = ?path, "Ensuring file exists");
+
+    let file = PathBuf::from(path);
+    if !file.exists() || !file.is_file() {
+        log_bail!(
+            "ERROR",
+            "File does not exist or is not a file: {}",
+            file.to_string_lossy()
+        );
+    }
+    Ok(file)
 }
 
 #[cfg(test)]

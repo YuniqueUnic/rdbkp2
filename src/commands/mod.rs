@@ -363,42 +363,28 @@ pub async fn restore(
     // 获取备份文件路径
     let file_path = parse_restore_file(input, interactive, &container_info)?;
 
-    // 确保备份文件存在
-    debug!(file_path = ?file_path, "Ensuring backup file exists");
-    if !file_path.exists() {
-        log_print!(
-            "ERROR",
-            "Backup file does not exist: {}",
-            file_path.to_string_lossy()
-        );
-        return Ok(());
-    }
-
     // 如果容器正在运行或重启中，则停止容器
     stop_container_timeout(&client, &container_info, timeout).await?;
 
     // Read mapping from backup file
-    let mapping_content = utils::read_file_from_archive(&file_path, "mapping.toml")?;
+    let mapping_content = utils::read_file_from_archive(&file_path, MAPPING_FILE_NAME)?;
     let backup_mapping: BackupMapping = toml::from_str(&mapping_content)?;
 
     // Verify container matches
     if container_info.name != backup_mapping.container_name {
-        error!(
+        log_bail!(
+            "ERROR",
             "Backup is for container {} but trying to restore to {}",
-            backup_mapping.container_name, container_info.name
-        );
-        return Err(anyhow::anyhow!(
-            "Container mismatch: backup is for {} but trying to restore to {}",
             backup_mapping.container_name,
             container_info.name
-        ));
+        );
     }
 
-    // If output path not specified, use the original paths from mapping
+    // If output specified, use the specified path
     let output_dir = if let Some(output) = output {
         PathBuf::from(output)
     } else {
-        // Use the first volume's source path from mapping
+        // Use the volume's source path from mapping
         let user_input = Input::new()
             .with_prompt("Restore output directory")
             .default(
@@ -460,59 +446,50 @@ fn parse_restore_file(
     input: Option<String>,
     interactive: bool,
     container_info: &ContainerInfo,
-) -> Result<PathBuf, anyhow::Error> {
+) -> Result<PathBuf> {
     let config = Config::global()?;
-
     debug!(container_name = ?container_info.name, "Getting backup file path");
-    let file_path = if interactive || input.is_none() {
-        if let Some(input) = input {
-            let file = PathBuf::from(input);
-            if !file.exists() || !file.is_file() {
-                log_bail!(
-                    "ERROR",
-                    "Backup file does not exist or is not a file: {}",
-                    file.to_string_lossy()
-                );
-            }
-            file
-        } else {
-            let bkp_dir = config.backup_dir;
 
-            let files = utils::get_files_start_with(&bkp_dir, &container_info.name, true)?;
+    // 如果提供了输入路径且不是交互模式，直接返回
+    if !interactive && input.is_some() {
+        let file = PathBuf::from(input.unwrap());
+        let file = utils::ensure_file_exists(&file)?;
+        return Ok(file);
+    }
 
-            if files.is_empty() {
-                log_bail!(
-                    "ERROR",
-                    "No backup files found for container {}",
-                    container_info.name
-                );
-            }
+    // 处理输入路径
+    if let Some(input) = input {
+        let file = PathBuf::from(input);
+        let file = utils::ensure_file_exists(&file)?;
+        return Ok(file);
+    }
 
-            if files.len() == 1 {
-                files[0].clone()
-            } else {
-                let selection = Select::new()
-                    .with_prompt(prompt_select!("Select one file to restore"))
-                    .items(
-                        &files
-                            .iter()
-                            .map(|f| f.to_string_lossy())
-                            .collect::<Vec<_>>(),
-                    )
-                    .default(0)
-                    .interact()?;
-                files[selection].clone()
-            }
-        }
+    // 从备份目录查找文件
+    let files = utils::get_files_start_with(&config.backup_dir, &container_info.name, true)?;
+    if files.is_empty() {
+        log_bail!(
+            "ERROR",
+            "No backup files found for container {}",
+            container_info.name
+        );
+    }
+
+    // 如果只有一个文件或需要选择
+    Ok(if files.len() == 1 {
+        files[0].clone()
     } else {
-        match input {
-            Some(input) => PathBuf::from(input),
-            None => {
-                log_bail!("ERROR", "Backup file path is required");
-            }
-        }
-    };
-    Ok(file_path)
+        let selection = Select::new()
+            .with_prompt(prompt_select!("Select one file to restore"))
+            .items(
+                &files
+                    .iter()
+                    .map(|f| f.to_string_lossy())
+                    .collect::<Vec<_>>(),
+            )
+            .default(0)
+            .interact()?;
+        files[selection].clone()
+    })
 }
 
 async fn get_container_by_name_or_id(
