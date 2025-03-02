@@ -7,9 +7,33 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
-pub fn compress<P: AsRef<Path>>(
+/// 压缩目录/文件，并在压缩包中添加额外的内存文件
+///
+/// # Arguments
+///
+/// * `source` - 要压缩的源目录或文件路径
+/// * `output_file` - 压缩后的输出文件路径
+/// * `memory_files` - 要添加到压缩包中的额外的内存文件列表，每个元素是一个元组 (文件名，文件内容)
+/// * `exclude_patterns` - 要排除的文件/目录模式列表，为空则不排除
+///
+/// # Returns
+///
+/// * `Result<()>` - 成功返回 Ok(()), 失败返回 Err
+///
+/// # Examples
+///
+/// ```ignore
+/// let source = Path::new("./source_dir");
+/// let output = Path::new("output.tar.xz");
+/// let memory_files = vec![("test.txt", "Hello World")];
+/// let excludes = vec![".git", "node_modules"];
+/// // let non-excludes = vec![];
+/// compress_with_memory_file(source, output, &memory_files, &excludes)?;
+/// ```
+pub fn compress_with_memory_file<P: AsRef<Path>>(
     source: P,
     output_file: P,
+    memory_files: &[(&str, &str)],
     exclude_patterns: &[&str],
 ) -> Result<()> {
     let source = source.as_ref();
@@ -26,55 +50,17 @@ pub fn compress<P: AsRef<Path>>(
         e
     })?;
 
-    debug!("Creating XZ encoder with compression level 9");
     let xz = XzEncoder::new(file, 9);
     let mut tar = tar::Builder::new(xz);
+    debug!("Creating XZ encoder with compression level 9");
 
-    debug!(
-        ?exclude_patterns,
-        "Setting up file walker with exclusion patterns"
-    );
-    let walker = walkdir::WalkDir::new(source)
-        .follow_links(true)
-        .into_iter()
-        .filter_entry(|e| {
-            let path = e.path().to_string_lossy();
-            let excluded = exclude_patterns.iter().any(|p| path.contains(p));
-            if excluded {
-                debug!(path = ?e.path(), "Excluding path");
-            }
-            !excluded
-        });
+    let mut items_count = 0;
 
-    let mut file_count = 0;
-    if source.is_dir() {
-        for entry in walker.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_file() {
-                debug!(path = ?path, "Adding file to archive");
-                let name = path.strip_prefix(source).map_err(|e| {
-                    error!(?e, ?path, "Failed to strip prefix from path");
-                    e
-                })?;
-                tar.append_path_with_name(path, name).map_err(|e| {
-                    error!(?e, ?path, "Failed to add file to archive");
-                    e
-                })?;
-                file_count += 1;
-            }
-        }
-    } else if source.is_file() {
-        debug!(path = ?source, "Adding file to archive");
-        let name = source.file_name().ok_or_else(|| {
-            error!("Failed to get file name");
-            anyhow::anyhow!("Failed to get file name")
-        })?;
-        tar.append_path_with_name(source, name).map_err(|e| {
-            error!(?e, ?source, "Failed to add file to archive");
-            e
-        })?;
-        file_count += 1;
-    }
+    // 首先添加内存中的文件
+    items_count += append_memory_files(memory_files, &mut tar)?;
+
+    // 然后添加源目录/文件
+    items_count += append_items(source, exclude_patterns, &mut tar)?;
 
     debug!("Finalizing archive");
     tar.finish().map_err(|e| {
@@ -83,87 +69,84 @@ pub fn compress<P: AsRef<Path>>(
     })?;
 
     info!(
-        file_count,
+        items_count,
         source_dir = ?source,
         output_file = ?output_file,
         "Directory compression completed successfully"
     );
+
     Ok(())
 }
 
-#[deprecated]
-#[allow(dead_code)]
-fn compress_dir<P: AsRef<Path>>(
-    source_dir: P,
-    output_file: P,
+fn append_items<P: AsRef<Path>>(
+    source: P,
     exclude_patterns: &[&str],
-) -> Result<()> {
-    let source_dir = source_dir.as_ref();
-    let output_file = output_file.as_ref();
+    tar: &mut tar::Builder<XzEncoder<File>>,
+) -> Result<usize> {
+    let mut items_count = 0;
+    if source.as_ref().is_dir() {
+        let walker = WalkDir::new(source.as_ref())
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|e| {
+                let path = e.path().to_string_lossy();
+                let excluded = exclude_patterns.iter().any(|p| path.contains(p));
+                if excluded {
+                    debug!(path = ?e.path(), "Excluding path");
+                }
+                !excluded
+            });
 
-    info!(
-        source_dir = ?source_dir,
-        output_file = ?output_file,
-        "Starting directory compression"
-    );
-
-    let file = File::create(output_file).map_err(|e| {
-        error!(?e, ?output_file, "Failed to create output file");
-        e
-    })?;
-
-    debug!("Creating XZ encoder with compression level 9");
-    let xz = XzEncoder::new(file, 9);
-    let mut tar = tar::Builder::new(xz);
-
-    debug!(
-        ?exclude_patterns,
-        "Setting up file walker with exclusion patterns"
-    );
-    let walker = walkdir::WalkDir::new(source_dir)
-        .follow_links(true)
-        .into_iter()
-        .filter_entry(|e| {
-            let path = e.path().to_string_lossy();
-            let excluded = exclude_patterns.iter().any(|p| path.contains(p));
-            if excluded {
-                debug!(path = ?e.path(), "Excluding path");
+        for entry in walker.filter_map(|e| e.ok()) {
+            if entry.path().is_file() {
+                let name = entry.path().strip_prefix(source.as_ref())?;
+                tar.append_path_with_name(entry.path(), name)?;
+                items_count += 1;
             }
-            !excluded
-        });
-
-    let mut file_count = 0;
-    for entry in walker.filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.is_file() {
-            debug!(path = ?path, "Adding file to archive");
-            let name = path.strip_prefix(source_dir).map_err(|e| {
-                error!(?e, ?path, "Failed to strip prefix from path");
-                e
-            })?;
-            tar.append_path_with_name(path, name).map_err(|e| {
-                error!(?e, ?path, "Failed to add file to archive");
-                e
-            })?;
-            file_count += 1;
         }
+    } else if source.as_ref().is_file() {
+        let name = source
+            .as_ref()
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get file name"))?;
+        tar.append_path_with_name(&source, name)?;
+        items_count += 1;
     }
 
-    debug!("Finalizing archive");
-    tar.finish().map_err(|e| {
-        error!(?e, "Failed to finalize archive");
-        e
-    })?;
-
-    info!(
-        file_count,
-        source_dir = ?source_dir,
-        output_file = ?output_file,
-        "Directory compression completed successfully"
-    );
-    Ok(())
+    Ok(items_count)
 }
 
+fn append_memory_files(
+    memory_files: &[(&str, &str)],
+    tar: &mut tar::Builder<XzEncoder<File>>,
+) -> Result<usize> {
+    for (name, content) in memory_files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, name, content.as_bytes())?;
+    }
+    Ok(memory_files.len())
+}
+
+/// 解压缩 tar.xz 格式的归档文件到指定目录
+///
+/// # Arguments
+///
+/// * `archive_path` - 要解压的归档文件路径
+/// * `target_dir` - 解压的目标目录路径
+///
+/// # Returns
+///
+/// 返回 `Result<()>`。如果解压成功则返回 `Ok(())`，否则返回相应的错误
+///
+/// # Errors
+///
+/// 此函数在以下情况会返回错误：
+/// - 无法打开归档文件
+/// - 无法创建 XZ 解码器
+/// - 解压过程中出现错误
 pub fn extract_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<()> {
     let archive_path = archive_path.as_ref();
     let target_dir = target_dir.as_ref();
@@ -191,6 +174,24 @@ pub fn extract_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result
         "Archive extraction completed successfully"
     );
     Ok(())
+}
+
+/// 从压缩包中读取指定文件的内容
+pub fn read_file_from_archive<P: AsRef<Path>>(archive_path: P, file_name: &str) -> Result<String> {
+    let file = File::open(archive_path.as_ref())?;
+    let xz = XzDecoder::new(file);
+    let mut archive = tar::Archive::new(xz);
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        if entry.path()?.display().to_string() == file_name {
+            let mut content = String::new();
+            entry.read_to_string(&mut content)?;
+            return Ok(content);
+        }
+    }
+
+    anyhow::bail!("File not found in archive: {}", file_name)
 }
 
 pub fn create_timestamp_filename(prefix: &str, ext: &str) -> String {
@@ -275,6 +276,23 @@ pub fn get_files_start_with<P: AsRef<Path>>(
     Ok(files)
 }
 
+/// 确保目录存在，如果不存在则创建
+///
+/// # Arguments
+///
+/// * `path` - 要确保存在的目录路径。如果路径包含文件扩展名，则创建其父目录
+///
+/// # Returns
+///
+/// * `Result<()>` - 成功返回 Ok(()), 失败返回 Err
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// ensure_dir_exists(Path::new("/tmp/test"))?; // 创建目录
+/// ensure_dir_exists(Path::new("/tmp/test/file.txt"))?; // 创建父目录
+/// ```
 pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     let path = path.as_ref();
 
@@ -282,16 +300,18 @@ pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
         debug!(?path, "Creating directory");
 
         if path.extension().is_none() {
+            // 如果路径没有扩展名，视为目录路径，创建所有必需目录
             std::fs::create_dir_all(path).map_err(|e| {
                 error!(?e, ?path, "Failed to create directory");
                 e
             })?;
         } else {
+            // 如果路径有扩展名，视为文件路径，创建所有必需的父目录
             let parent_dir = path.parent().ok_or_else(|| {
                 anyhow::anyhow!("Failed to get parent directory: {}", path.display())
             })?;
 
-            std::fs::create_dir(parent_dir).map_err(|e| {
+            std::fs::create_dir_all(parent_dir).map_err(|e| {
                 error!(?e, ?path, "Failed to create directory");
                 e
             })?;
@@ -301,72 +321,6 @@ pub fn ensure_dir_exists<P: AsRef<Path>>(path: P) -> Result<()> {
     } else {
         debug!(?path, "Directory already exists");
     }
-    Ok(())
-}
-
-/// 从压缩包中读取指定文件的内容
-pub fn read_file_from_archive<P: AsRef<Path>>(archive_path: P, file_name: &str) -> Result<String> {
-    let file = File::open(archive_path.as_ref())?;
-    let xz = XzDecoder::new(file);
-    let mut archive = tar::Archive::new(xz);
-
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        if entry.path()?.to_string_lossy() == file_name {
-            let mut content = String::new();
-            entry.read_to_string(&mut content)?;
-            return Ok(content);
-        }
-    }
-
-    Err(anyhow::anyhow!("File not found in archive: {}", file_name))
-}
-
-/// 压缩目录/文件，并在压缩包中添加额外的内存文件
-pub fn compress_with_memory_file<P: AsRef<Path>>(
-    source: P,
-    output_file: P,
-    memory_files: &[(&str, &str)], // (文件名，文件内容)
-    exclude_patterns: &[&str],
-) -> Result<()> {
-    let file = File::create(output_file.as_ref())?;
-    let xz = XzEncoder::new(file, 9);
-    let mut tar = tar::Builder::new(xz);
-
-    // 首先添加内存中的文件
-    for (name, content) in memory_files {
-        let mut header = tar::Header::new_gnu();
-        header.set_size(content.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        tar.append_data(&mut header, name, content.as_bytes())?;
-    }
-
-    // 然后添加源目录/文件
-    if source.as_ref().is_dir() {
-        let walker = WalkDir::new(source.as_ref())
-            .follow_links(true)
-            .into_iter()
-            .filter_entry(|e| {
-                let path = e.path().to_string_lossy();
-                !exclude_patterns.iter().any(|p| path.contains(p))
-            });
-
-        for entry in walker.filter_map(|e| e.ok()) {
-            if entry.path().is_file() {
-                let name = entry.path().strip_prefix(source.as_ref())?;
-                tar.append_path_with_name(entry.path(), name)?;
-            }
-        }
-    } else if source.as_ref().is_file() {
-        let name = source
-            .as_ref()
-            .file_name()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get file name"))?;
-        tar.append_path_with_name(source.as_ref(), name)?;
-    }
-
-    tar.finish()?;
     Ok(())
 }
 
@@ -421,7 +375,7 @@ mod tests {
 
         // 压缩
         let archive = temp.child("archive.tar.xz");
-        compress(&source_dir, &archive, &[])?;
+        compress_with_memory_file(&source_dir, &archive, &[], &[])?;
         archive.assert(predicate::path::exists());
 
         // 解压
@@ -439,18 +393,81 @@ mod tests {
 
     #[test]
     fn test_compress_and_extract_with_input() -> Result<()> {
-        let file = "./docker/Dockerfile";
-        let archive_path = "./backups/dockerfile.tar.xz";
-        let target_dir = "./backups/";
-        ensure_dir_exists(target_dir)?;
-        compress(file, archive_path, &[])?;
-        extract_archive(archive_path, target_dir)?;
+        let temp = assert_fs::TempDir::new()?;
+        let source = temp.child("source");
+        let extract = temp.child("extract");
+        source.create_dir_all()?;
+        extract.create_dir_all()?;
 
-        let output = format!("{}/{}", target_dir, file.split('/').last().unwrap());
-        assert_content_match(file, &output)?;
+        let content = "Hello, World! ";
+        let file = source.child("test.txt");
+        file.write_str(content)?;
 
-        fs::remove_file(archive_path)?;
-        fs::remove_file(output)?;
+        let archive_path = temp.child("archive.tar.xz");
+        compress_with_memory_file(&source, &archive_path, &[], &[])?;
+        extract_archive(&archive_path, &extract)?;
+        assert_content_match(&file, &extract.child(file.file_name().unwrap()))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_file_from_archive() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let archive = temp.child("test.tar.xz");
+
+        // 创建一个包含内存文件的压缩包
+        let test_content = "Hello from memory file!";
+        let memory_files = vec![("test.txt", test_content)];
+        compress_with_memory_file(temp.path(), &archive, &memory_files, &[])?;
+
+        // 从压缩包中读取文件
+        let content = read_file_from_archive(&archive, "test.txt")?;
+        assert_eq!(content, test_content);
+
+        // 测试读取不存在的文件
+        let result = read_file_from_archive(&archive, "nonexistent.txt");
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compress_with_memory_file() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+
+        // 创建源文件
+        let source_dir = temp.child("source");
+        source_dir.create_dir_all()?;
+        let test_file = source_dir.child("source.txt");
+        test_file.write_str("Source file content")?;
+
+        // 创建压缩包
+        let archive = temp.child("archive.tar.xz");
+        let memory_files = vec![
+            ("memory1.txt", "Memory file 1 content"),
+            ("memory2.txt", "Memory file 2 content"),
+        ];
+        compress_with_memory_file(&source_dir, &archive, &memory_files, &[])?;
+
+        // 验证压缩包内容
+        let extract_dir = temp.child("extract");
+        extract_dir.create_dir_all()?;
+        extract_archive(&archive, &extract_dir)?;
+
+        // 检查内存文件
+        let memory_file1 = extract_dir.child("memory1.txt");
+        memory_file1.assert(predicate::path::exists());
+        memory_file1.assert(predicate::str::contains("Memory file 1 content"));
+
+        let memory_file2 = extract_dir.child("memory2.txt");
+        memory_file2.assert(predicate::path::exists());
+        memory_file2.assert(predicate::str::contains("Memory file 2 content"));
+
+        // 检查源文件
+        let source_file = extract_dir.child("source.txt");
+        source_file.assert(predicate::path::exists());
+        source_file.assert(predicate::str::contains("Source file content"));
 
         Ok(())
     }

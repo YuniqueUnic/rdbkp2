@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
-use crate::utils::{self, compress, create_timestamp_filename, ensure_dir_exists, extract_archive};
+use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, extract_archive};
 use anyhow::Result;
 use chrono::Local;
 use dialoguer::{Confirm, Input, MultiSelect, Select};
@@ -512,10 +512,14 @@ async fn backup_volume(
         "Compressing volume directory"
     );
 
+    // TODO
+    let mapping_content = toml::to_string("&backup_mapping")?;
+
     // 压缩卷目录
-    compress(
+    utils::compress_with_memory_file(
         &volume.source,
         &backup_path,
+        &[("mapping.toml", &mapping_content)],
         &[".git", "node_modules", "target"],
     )?;
 
