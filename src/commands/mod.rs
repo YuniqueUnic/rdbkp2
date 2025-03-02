@@ -2,14 +2,15 @@ mod prompt;
 
 use crate::config::Config;
 use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
-use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, extract_archive};
+use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive};
 use crate::{log_bail, log_print};
 use prompt::*;
 
 use anyhow::Result;
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
-use std::path::{Path, PathBuf};
+use fs_extra;
+use std::path::PathBuf;
 use std::time::Duration;
 use toml;
 use tracing::{debug, error, info, warn};
@@ -123,6 +124,7 @@ pub async fn backup(
     interactive: bool,
     timeout: u64,
     exclude_patterns: &[&str],
+    yes: bool,
 ) -> Result<()> {
     info!(
         ?container,
@@ -286,49 +288,49 @@ async fn select_volumes(
     client: &DockerClient,
     container_info: &ContainerInfo,
 ) -> Result<(usize, Vec<VolumeInfo>)> {
-    #[allow(unused_assignments)]
-    let total_volumes: usize;
-    #[allow(unused_assignments)]
-    let mut selected_volumes = Vec::new();
-
+    // 处理单文件备份场景
     if let Some(file) = file {
-        let file = PathBuf::from(file);
-        if !file.exists() {
-            log_bail!("ERROR", "File does not exist: {}", file.to_string_lossy());
+        let file_path = PathBuf::from(file);
+        if !file_path.exists() {
+            log_bail!(
+                "ERROR",
+                "File does not exist: {}",
+                file_path.to_string_lossy()
+            );
         }
 
-        total_volumes = 1;
-        // 获取卷信息
-        selected_volumes = vec![VolumeInfo {
-            source: file.clone(),
-            destination: file.clone(),
-            name: file
+        let volume = VolumeInfo {
+            source: file_path.clone(),
+            destination: file_path.clone(),
+            name: file_path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-        }];
-    } else {
-        // 获取卷信息
-        debug!(container_id = ?container_info.id, "Getting volume information");
-        let volumes = client.get_container_volumes(&container_info.id).await?;
-        if volumes.is_empty() {
-            log_bail!(
-                "ERROR",
-                "No volumes found for container {}",
-                container_info.name
-            );
-        }
-
-        // 选择要备份的卷
-        debug!(volume_count = volumes.len(), "Selecting volumes to backup");
-        total_volumes = volumes.len();
-        selected_volumes = if interactive {
-            select_volumes_prompt(&volumes)?
-        } else {
-            volumes
         };
+
+        return Ok((1, vec![volume]));
     }
+
+    // 处理容器卷备份场景
+    debug!(container_id = ?container_info.id, "Getting volume information");
+    let volumes = client.get_container_volumes(&container_info.id).await?;
+
+    if volumes.is_empty() {
+        log_bail!(
+            "ERROR",
+            "No volumes found for container {}",
+            container_info.name
+        );
+    }
+
+    debug!(volume_count = volumes.len(), "Selecting volumes to backup");
+    let total_volumes = volumes.len();
+    let selected_volumes = if interactive {
+        select_volumes_prompt(&volumes)?
+    } else {
+        volumes
+    };
 
     if selected_volumes.is_empty() {
         log_bail!("ERROR", "No volumes selected for backup");
@@ -341,7 +343,6 @@ async fn select_volumes(
  * restore
  */
 
-// TODO
 pub async fn restore(
     container: Option<String>,
     input: Option<String>,
@@ -349,6 +350,7 @@ pub async fn restore(
     restart: bool,
     interactive: bool,
     timeout: u64,
+    yes: bool,
 ) -> Result<()> {
     info!(
         ?container,
@@ -375,7 +377,7 @@ pub async fn restore(
     stop_container_timeout(&client, &container_info, timeout).await?;
 
     // 恢复卷 (s)
-    restore_volumes(&container_info, &file_path, output, interactive).await?;
+    restore_volumes(&container_info, &file_path, output, interactive, yes).await?;
 
     // 如果需要重启容器，则重启容器
     if restart {
@@ -398,12 +400,13 @@ async fn restore_volumes(
     file_path: &PathBuf,
     output: Option<String>,
     interactive: bool,
+    yes: bool,
 ) -> Result<()> {
-    // Read mapping from backup file
+    // 读取并验证备份映射文件
     let mapping_content = utils::read_file_from_archive(&file_path, MAPPING_FILE_NAME)?;
     let backup_mapping: BackupMapping = toml::from_str(&mapping_content)?;
 
-    // Verify container matches
+    // 验证容器匹配
     if container_info.name != backup_mapping.container_name {
         log_bail!(
             "ERROR",
@@ -413,38 +416,46 @@ async fn restore_volumes(
         );
     }
 
-    // if interactive, check if the output is a directory
-    let user_select_volumes = if interactive && output.is_none() {
-        select_volumes_prompt(&backup_mapping.volumes)?
-    } else {
-        backup_mapping.volumes
+    // 处理恢复路径
+    let (volumes_to_restore, output_dirs) = match &output {
+        // 如果指定了输出路径，直接使用所有卷并输出到指定路径
+        Some(output_path) => {
+            let output_path = PathBuf::from(output_path);
+            (backup_mapping.volumes, vec![output_path])
+        }
+        // 如果没有指定输出路径，让用户选择要恢复的卷（如果是交互模式）
+        None => {
+            let selected_volumes = if interactive {
+                select_volumes_prompt(&backup_mapping.volumes)?
+            } else {
+                backup_mapping.volumes
+            };
+
+            let output_dirs = selected_volumes
+                .iter()
+                .map(|v| v.source.clone())
+                .collect::<Vec<_>>();
+
+            (selected_volumes, output_dirs)
+        }
     };
 
-    // If output specified, use the specified path
-    let output_dirs = if let Some(output) = &output {
-        vec![PathBuf::from(output)]
-    } else {
-        user_select_volumes
-            .iter()
-            .map(|v| v.source.clone())
-            .collect::<Vec<_>>()
-    };
-
-    // 确保输出目录 (s) 存在
-    debug!(?output_dirs, "Ensuring output directory exists");
+    // 确保输出目录存在
+    debug!(?output_dirs, "Ensuring output directories exist");
     for output_dir in &output_dirs {
         ensure_dir_exists(output_dir)?;
     }
 
-    // 确认恢复
-    if interactive {
+    // 如果不是强制模式且是交互模式，询问用户确认
+    if !yes && interactive {
         debug!("Requesting user confirmation");
         let confirmed = Confirm::new()
             .with_prompt(format!(
-                "Are you sure you want to restore {} to container {}?",
+                "❓ Are you sure you want to restore {} to container {}?",
                 file_path.to_string_lossy(),
                 container_info.name
             ))
+            .default(true)
             .interact()?;
 
         if !confirmed {
@@ -453,11 +464,13 @@ async fn restore_volumes(
         }
     }
 
-    if output.is_some() && output_dirs.len() == 1 {
+    // 执行恢复操作
+    if output.is_some() {
+        // 如果指定了输出路径，所有内容解压到同一目录
         unpack_archive_to(&container_info, &file_path, &output_dirs[0]).await?;
     } else {
-        // 执行恢复 TODO
-        unpack_archive_move(&container_info, &file_path, &user_select_volumes).await?;
+        // 否则，按照原始卷的路径结构恢复
+        unpack_archive_move(&container_info, &file_path, &volumes_to_restore).await?;
     }
 
     info!(
@@ -465,6 +478,102 @@ async fn restore_volumes(
         "Restore operation completed successfully"
     );
 
+    Ok(())
+}
+
+async fn unpack_archive_to(
+    container: &ContainerInfo,
+    file_path: &PathBuf,
+    output_dir: &PathBuf,
+) -> Result<()> {
+    info!(
+        container_name = ?container.name,
+        file_path = ?file_path,
+        output_dir = ?output_dir,
+        "Starting volume restore"
+    );
+
+    println!(
+        "Restoring {} to {}",
+        file_path.to_string_lossy(),
+        output_dir.to_string_lossy()
+    );
+
+    // 解压备份文件到指定目录
+    unpack_archive(file_path, output_dir)?;
+
+    info!(
+        container_name = ?container.name,
+        output_dir = ?output_dir,
+        "Volume restore completed"
+    );
+    Ok(())
+}
+
+async fn unpack_archive_move(
+    container: &ContainerInfo,
+    file_path: &PathBuf,
+    volumes: &[VolumeInfo],
+) -> Result<()> {
+    info!(
+        container_name = ?container.name,
+        file_path = ?file_path,
+        "Starting volume restore"
+    );
+
+    // 需要使用临时目录的原因：
+    // 1. tar.xz 文件需要完整解压后才能访问其中的文件
+    // 2. 需要保证原子性操作，避免解压过程中出错导致数据不一致
+    let temp_dir = tempfile::tempdir()?;
+    let temp_path = temp_dir.into_path();
+
+    // 先解压到临时目录
+    debug!(temp_dir = ?temp_path, "Extracting to temporary directory");
+    unpack_archive(file_path, &temp_path)?;
+
+    // 对每个卷进行恢复
+    for volume in volumes {
+        let temp_source_path = temp_path.join(&volume.name);
+        let target_path = &volume.source;
+
+        if !temp_source_path.exists() {
+            warn!(
+                volume = ?volume.name,
+                "Volume data not found in backup, skipping"
+            );
+            continue;
+        }
+
+        println!(
+            "Restoring volume {} to {}",
+            volume.name,
+            target_path.to_string_lossy()
+        );
+
+        // 使用 fs_extra 来复制目录内容，提供更好的错误处理和进度反馈
+        let copy_options = fs_extra::dir::CopyOptions {
+            overwrite: true,
+            skip_exist: false,
+            content_only: true,
+            ..Default::default()
+        };
+
+        debug!(
+            from = ?temp_source_path,
+            to = ?target_path,
+            "Copying volume data"
+        );
+
+        fs_extra::dir::copy(&temp_source_path, target_path, &copy_options)
+            .map_err(|e| anyhow::anyhow!("Failed to copy volume data: {}", e))?;
+
+        info!(volume = ?volume.name, "Volume restored successfully");
+    }
+
+    info!(
+        container_name = ?container.name,
+        "Volumes restored successfully"
+    );
     Ok(())
 }
 
@@ -532,64 +641,4 @@ async fn get_container_by_name_or_id(
             error!(?name_or_id, "Container not found");
             err
         })
-}
-
-async fn unpack_archive_to(
-    container: &ContainerInfo,
-    file_path: &PathBuf,
-    output_dir: &PathBuf,
-) -> Result<()> {
-    info!(
-        container_name = ?container.name,
-        file_path = ?file_path,
-        "Starting volume restore"
-    );
-
-    println!(
-        "Restoring {} to container {}",
-        file_path.to_string_lossy(),
-        container.name
-    );
-
-    debug!(
-        source = ?file_path,
-        destination = ?output_dir,
-        "Extracting backup archive"
-    );
-
-    // 解压备份文件到卷目录
-    extract_archive(file_path, output_dir)?;
-
-    info!("Volume restore completed successfully");
-    println!("Restore completed to {}", output_dir.to_string_lossy());
-    Ok(())
-}
-
-async fn unpack_archive_move(
-    container: &ContainerInfo,
-    file_path: &PathBuf,
-    volumes_mapping: &[VolumeInfo],
-) -> Result<()> {
-    log_print!(
-        "INFO",
-        "Unpacking archive and moving to volumes for container {}",
-        container.name
-    );
-    let temp_dir = tempfile::tempdir()?;
-    let temp_dir_path = temp_dir.into_path();
-
-    // 解压备份文件到卷目录
-    extract_archive(file_path, &temp_dir_path)?;
-
-    // 根据 mapping 文件中的 volumes 信息，将文件移动到对应的卷目录
-    // TODO: need to check it work properly
-    for volume in volumes_mapping {
-        let volume_path = temp_dir_path.join(&volume.name);
-        let destination_path = volume.source.join(&volume.name);
-        std::fs::rename(volume_path, destination_path)?;
-    }
-
-    info!("Volume restore completed successfully");
-    // println!("Restore completed to {}", output_dir.to_string_lossy());
-    Ok(())
 }

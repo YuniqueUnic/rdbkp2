@@ -30,18 +30,22 @@ struct Cli {
     command: Commands,
 
     /// 是否在操作 (备份/恢复) 后重启容器
-    #[arg(short, long)]
+    #[arg(global = true, short, long)]
     restart: bool,
 
     /// 停止容器超时时间 (秒)
-    #[arg(short, long, default_value = "30")]
+    #[arg(global = true, short, long, default_value = "30")]
     timeout: u64,
 
     /// 排除模式
     ///
     /// 备份时将排除包含这些模式的文件/目录
-    #[arg(short, long, default_value = ".git,node_modules,target")]
+    #[arg(global = true, short, long, default_value = ".git,node_modules,target")]
     exclude: String,
+
+    /// 是否自动确认
+    #[arg(global = true, short, long)]
+    yes: bool,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -169,6 +173,7 @@ pub async fn run() -> Result<()> {
     let restart = cli.restart;
     let exclude = cli.exclude;
     let exclude_patterns = exclude.split(',').collect::<Vec<&str>>();
+    let yes = cli.yes;
 
     // 根据子命令执行相应的操作
     match cli.command {
@@ -193,6 +198,7 @@ pub async fn run() -> Result<()> {
                 interactive,
                 timeout,
                 &exclude_patterns,
+                yes,
             )
             .await?;
         }
@@ -209,7 +215,7 @@ pub async fn run() -> Result<()> {
                 interactive,
                 "Executing restore command"
             );
-            commands::restore(container, file, output, restart, interactive, timeout).await?;
+            commands::restore(container, file, output, restart, interactive, timeout, yes).await?;
         }
         Commands::List => {
             info!("Executing list command");

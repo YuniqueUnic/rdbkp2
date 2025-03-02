@@ -157,7 +157,7 @@ fn append_memory_files(
 /// - 无法打开归档文件
 /// - 无法创建 XZ 解码器
 /// - 解压过程中出现错误
-pub fn extract_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<()> {
+pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<()> {
     let archive_path = archive_path.as_ref();
     let target_dir = target_dir.as_ref();
 
@@ -416,7 +416,7 @@ mod tests {
         // 解压
         let extract_dir = temp.child("extract");
         extract_dir.create_dir_all()?;
-        extract_archive(&archive, &extract_dir)?;
+        unpack_archive(&archive, &extract_dir)?;
 
         // 验证
         let extracted_file = extract_dir.child("test.txt");
@@ -440,7 +440,7 @@ mod tests {
 
         let archive_path = temp.child("archive.tar.xz");
         compress_with_memory_file(&[&source], &archive_path, &[], &[])?;
-        extract_archive(&archive_path, &extract)?;
+        unpack_archive(&archive_path, &extract)?;
         assert_content_match(&file, &extract.child(file.file_name().unwrap()))?;
 
         Ok(())
@@ -488,7 +488,7 @@ mod tests {
         // 验证压缩包内容
         let extract_dir = temp.child("extract");
         extract_dir.create_dir_all()?;
-        extract_archive(&archive, &extract_dir)?;
+        unpack_archive(&archive, &extract_dir)?;
 
         // 检查内存文件
         let memory_file1 = extract_dir.child("memory1.txt");
