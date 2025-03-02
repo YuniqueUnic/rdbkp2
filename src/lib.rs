@@ -253,15 +253,3 @@ async fn do_action(action: Commands) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-pub(crate) fn init_test_log() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(Level::DEBUG.into())
-                .from_env_lossy(),
-        )
-        .with_test_writer()
-        .try_init();
-}

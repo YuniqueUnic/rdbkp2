@@ -310,12 +310,9 @@ async fn backup_items(
         .map(|v| v.source.as_path())
         .collect::<Vec<_>>();
 
-    #[cfg(not(test))]
-    {
-        // 测试时，不停止容器 (不一定存在 Docker 环境)
-        // 如果容器正在运行或重启中，则停止容器
-        stop_container_timeout(&container_info).await?;
-    }
+    // 测试时，不停止容器 (不一定存在 Docker 环境)
+    // 如果容器正在运行或重启中，则停止容器
+    stop_container_timeout(&container_info).await?;
 
     // 开始备份
     // 压缩卷目录，包含 mapping.toml
@@ -491,13 +488,9 @@ async fn restore_volumes(
             }
         }
 
-        #[cfg(not(test))]
-        {
-            // 测试时，不停止容器 (不一定存在 Docker 环境)
-            // 如果容器正在运行或重启中，则停止容器
-            stop_container_timeout(&container_info).await?;
-        }
-
+        // 测试时，不停止容器 (不一定存在 Docker 环境)
+        // 如果容器正在运行或重启中，则停止容器
+        stop_container_timeout(&container_info).await?;
         // 开始解压
         unpack_archive_to(container_info, file_path, &output_path).await?;
         return Ok(());
@@ -524,12 +517,9 @@ async fn restore_volumes(
         }
     }
 
-    #[cfg(not(test))]
-    {
-        // 测试时，不停止容器 (不一定存在 Docker 环境)
-        // 如果容器正在运行或重启中，则停止容器
-        stop_container_timeout(&container_info).await?;
-    }
+    // 测试时，不停止容器 (不一定存在 Docker 环境)
+    // 如果容器正在运行或重启中，则停止容器
+    stop_container_timeout(&container_info).await?;
 
     // 开始解压
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
@@ -724,91 +714,11 @@ async fn get_container_by_name_or_id<T: DockerClientInterface>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::docker::{
-        ClientType, DOCKER_CLIENT_INSTANCE, DockerClient, DockerClientInterface,
-        MockDockerClientInterface,
-    };
+    use crate::docker::DockerClient;
     use assert_fs::TempDir;
-    use predicates::ord::eq;
 
-    use std::{
-        fs,
-        sync::{Arc, RwLock},
-    };
+    use std::fs;
     use tokio::test;
-
-    #[test]
-    async fn test_list_containers_with_mock() -> Result<()> {
-        // 1. 创建 MockDockerClientInterface 实例
-        let mut mock_client = MockDockerClientInterface::new();
-
-        // 2. 设置 Mock 对象的行为 (expectations)
-        mock_client.expect_list_containers().returning(|| {
-            // 模拟 list_containers 方法的返回值
-            Ok(vec![
-                ContainerInfo {
-                    id: "test_id_1".to_string(),
-                    name: "test_container_1".to_string(),
-                    status: "running".to_string(),
-                },
-                ContainerInfo {
-                    id: "test_id_2".to_string(),
-                    name: "test_container_2".to_string(),
-                    status: "exited".to_string(),
-                },
-            ])
-        });
-
-        // 3.  替换全局 DockerClient 实例 (仅在测试中有效!)
-        DOCKER_CLIENT_INSTANCE
-            .set(Arc::new(RwLock::new(mock_client)))
-            .unwrap();
-
-        // 4. 调用 DockerClient::global() 获取 Mock 实例
-        let client = DockerClient::global()?;
-
-        // 5. 调用被测试的代码 (例如 list_containers)
-        let containers = client.list_containers().await?;
-
-        // 6.  断言测试结果
-        assert_eq!(containers.len(), 2);
-        assert_eq!(containers[0].name, "test_container_1");
-        assert_eq!(containers[1].status, "exited");
-
-        println!("Test finished with Mock DockerClient.");
-        Ok(())
-    }
-
-    #[test]
-    async fn test_get_container_volumes_with_mock() -> Result<()> {
-        let mut mock_client = MockDockerClientInterface::new();
-
-        mock_client
-            .expect_get_container_volumes()
-            .with(eq("test_container_id")) // 期望 get_container_volumes 被调用时 container_id 参数为 "test_container_id"
-            .returning(|_| {
-                // 模拟 get_container_volumes 的返回值
-                Ok(vec![VolumeInfo {
-                    name: "test_volume_1".to_string(),
-                    source: PathBuf::from("/source/path1"),
-                    destination: PathBuf::from("/destination/path1"),
-                }])
-            });
-
-        DOCKER_CLIENT_INSTANCE
-            .set(Arc::new(RwLock::new(mock_client)))
-            .unwrap();
-        let client = DockerClient::global()?;
-
-        let volumes = client.get_container_volumes("test_container_id").await?;
-
-        assert_eq!(volumes.len(), 1);
-        assert_eq!(volumes[0].name, "test_volume_1");
-        assert_eq!(volumes[0].source, PathBuf::from("/source/path1"));
-
-        println!("Test finished for get_container_volumes with Mock.");
-        Ok(())
-    }
 
     // 辅助函数：初始化 docker client
     fn setup_docker_client() -> Result<()> {
@@ -856,6 +766,14 @@ mod tests {
             name: "test_container".to_string(),
             status: "running".to_string(),
         };
+
+        let mut client = DockerClient::global()?;
+        client
+            .expect_get_container_status()
+            .returning(|_| Ok("exited".to_string()));
+        client.expect_stop_container().returning(|_| Ok(()));
+        client.expect_get_stop_timeout_secs().returning(|| 10);
+        client.expect_restart_container().returning(|_| Ok(()));
 
         // 执行备份
         backup_items(

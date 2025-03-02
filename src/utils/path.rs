@@ -161,7 +161,7 @@ mod tests {
     use assert_fs::prelude::*;
 
     use super::*;
-    use std::fs::{File, create_dir_all};
+    use std::fs::File;
 
     #[test]
     fn test_absolute_conversion() {

@@ -16,6 +16,7 @@ use crate::utils;
 
 // 定义 DockerClient 接口 trait，并使用 automock 为 test 生成 mock 实现
 #[automock]
+#[allow(dead_code)]
 pub trait DockerClientInterface: Send + Sync + Clone + 'static {
     async fn list_containers(&self) -> Result<Vec<ContainerInfo>>;
     async fn get_container_volumes(&self, container_id: &str) -> Result<Vec<VolumeInfo>>;
@@ -28,9 +29,60 @@ pub trait DockerClientInterface: Send + Sync + Clone + 'static {
 
 impl Clone for MockDockerClientInterface {
     fn clone(&self) -> Self {
-        MockDockerClientInterface::new()
+        let mut client = MockDockerClientInterface::new();
+        client
+            .expect_get_container_status()
+            .returning(|_| Ok("exited".to_string()));
+        client.expect_stop_container().returning(|_| Ok(()));
+        client.expect_get_stop_timeout_secs().returning(|| 10);
+        client.expect_restart_container().returning(|_| Ok(()));
+        client
     }
 }
+
+// #[cfg(test)]
+// impl MockDockerClientInterface {
+//     pub fn new_default(
+//         container_count: usize,
+//         volume_count: usize,
+//         stop_timeout_secs: u64,
+//     ) -> Self {
+//         let mut client = MockDockerClientInterface::new();
+
+//         let containers = (0..container_count)
+//             .map(|i| ContainerInfo {
+//                 id: format!("container{}", i),
+//                 name: format!("test-container{}", i),
+//                 status: "running".to_string(),
+//             })
+//             .collect::<Vec<_>>();
+
+//         let volumes = (0..volume_count)
+//             .map(|i| VolumeInfo {
+//                 name: format!("volume{}", i),
+//                 source: PathBuf::from(format!("/host/path{}", i)),
+//                 destination: PathBuf::from(format!("/container/path{}", i)),
+//             })
+//             .collect::<Vec<_>>();
+
+//         client
+//             .expect_list_containers()
+//             .returning(move || Ok(containers.clone()));
+//         client
+//             .expect_get_container_volumes()
+//             .returning(move |_| Ok(volumes.clone()));
+//         client.expect_start_container().returning(|_| Ok(()));
+//         client.expect_restart_container().returning(|_| Ok(()));
+//         client.expect_stop_container().returning(|_| Ok(()));
+//         client
+//             .expect_get_container_status()
+//             .returning(|_| Ok("exited".to_string()));
+//         client
+//             .expect_get_stop_timeout_secs()
+//             .returning(move || stop_timeout_secs);
+//         client
+//     }
+// }
 
 // 使用别名，方便在 #[cfg(test)] 环境下替换为 Mock 类型
 #[cfg(not(test))]
@@ -71,7 +123,7 @@ impl DockerClient {
 
     /// Initialize a mock Docker client for testing
     #[cfg(test)]
-    pub fn init(_stop_timeout_secs: u64) -> Result<()> {
+    pub fn init(stop_timeout_secs: u64) -> Result<()> {
         let client = MockDockerClientInterface::new();
         let arc = Arc::new(RwLock::new(client));
         DOCKER_CLIENT_INSTANCE.get_or_init(|| arc);
@@ -304,30 +356,105 @@ mod tests {
         DOCKER_COMPOSE_CMD,
         tests::{check_docker_compose, get_docker_compose_path},
     };
+    use std::sync::Once;
     use std::time::Duration;
     use tokio::{self, process::Command, time::sleep};
     use tracing::debug;
+    static INIT: Once = Once::new();
+
+    fn setup() {
+        INIT.call_once(|| {
+            // Initialize logging for tests if needed
+            // 初始化日志
+            crate::tests::init_test_log();
+            // 初始化 DockerClient
+            DockerClient::init(10).unwrap();
+        });
+    }
 
     #[tokio::test]
-    #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_docker_client_creation() -> Result<()> {
+        setup();
         let _client = DockerClient::global()?;
         Ok(())
     }
 
     #[tokio::test]
-    #[ignore = "This test needs a really docker environment, manual test is recommended"]
-    async fn test_list_containers() -> Result<()> {
-        let client = DockerClient::global()?;
+    async fn test_list_containers() {
+        setup();
+        // Initialize the global mock client
+        DockerClient::init(0).unwrap();
+
+        // Get the client and call the method
+        let mut client = DockerClient::global().unwrap();
+        // Set expectations
+        client.expect_list_containers().times(1).returning(|| {
+            Ok(vec![ContainerInfo {
+                id: "container1".to_string(),
+                name: "test-container".to_string(),
+                status: "running".to_string(),
+            }])
+        });
+
+        let containers = client.list_containers().await.unwrap();
+
+        // Verify results
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].id, "container1");
+        assert_eq!(containers[0].name, "test-container");
+        assert_eq!(containers[0].status, "running");
+    }
+
+    #[tokio::test]
+    async fn test_get_container_volumes_simple() {
+        setup();
+        // Initialize the global mock client
+        DockerClient::init(0).unwrap();
+
+        // Get the client and call the method
+        let mut client = DockerClient::global().unwrap();
+        // Set expectations
+        client
+            .expect_get_container_volumes()
+            .with(eq("container1"))
+            .times(1)
+            .returning(|_| {
+                Ok(vec![VolumeInfo {
+                    name: "volume1".to_string(),
+                    source: PathBuf::from("/host/path"),
+                    destination: PathBuf::from("/container/path"),
+                }])
+            });
+
+        let volumes = client.get_container_volumes("container1").await.unwrap();
+
+        // Verify results
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].name, "volume1");
+        assert_eq!(volumes[0].source, PathBuf::from("/host/path"));
+        assert_eq!(volumes[0].destination, PathBuf::from("/container/path"));
+    }
+
+    #[tokio::test]
+    async fn test_list_containers_simple() -> Result<()> {
+        setup();
+        let mut client = DockerClient::global()?;
+        client.expect_list_containers().returning(|| {
+            Ok(vec![ContainerInfo {
+                id: "test_id_1".to_string(),
+                name: "test_container_1".to_string(),
+                status: "running".to_string(),
+            }])
+        });
         let containers = client.list_containers().await?;
-        assert!(containers.len() >= 0);
+        assert!(containers.len() == 1);
         Ok(())
     }
 
     #[tokio::test]
     #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_get_container_volumes() -> Result<()> {
-        crate::init_test_log();
+        setup();
 
         // 首先检查 docker compose 命令是否可用
         check_docker_compose()?;

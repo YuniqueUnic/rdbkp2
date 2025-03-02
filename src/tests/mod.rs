@@ -5,6 +5,21 @@ use std::process::Command;
 use std::{env, path::PathBuf};
 use tokio::time::{Duration, sleep};
 
+#[cfg(test)]
+pub(crate) fn init_test_log() {
+    use tracing::Level;
+    use tracing_subscriber::EnvFilter;
+
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(Level::DEBUG.into())
+                .from_env_lossy(),
+        )
+        .with_test_writer()
+        .try_init();
+}
+
 pub(crate) fn get_docker_compose_path() -> PathBuf {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get manifest directory");
     PathBuf::from(manifest_dir).join("docker")
