@@ -1,5 +1,5 @@
 use crate::{
-    docker::{ContainerInfo, DockerClient, VolumeInfo},
+    docker::{ContainerInfo, DockerClientInterface, VolumeInfo},
     prompt_select,
 };
 
@@ -7,7 +7,9 @@ use anyhow::Result;
 use dialoguer::{MultiSelect, Select};
 use tracing::{debug, info};
 
-pub(super) async fn select_container_prompt(client: &DockerClient) -> Result<ContainerInfo> {
+pub(super) async fn select_container_prompt<T: DockerClientInterface>(
+    client: &T,
+) -> Result<ContainerInfo> {
     debug!("Getting container list for selection");
     let containers = client.list_containers().await?;
     let container_names: Vec<&String> = containers.iter().map(|c| &c.name).collect();
@@ -29,7 +31,9 @@ pub(super) async fn select_container_prompt(client: &DockerClient) -> Result<Con
 }
 
 #[allow(dead_code)]
-pub(super) async fn select_containers_prompt(client: &DockerClient) -> Result<Vec<ContainerInfo>> {
+pub(super) async fn select_containers_prompt<T: DockerClientInterface>(
+    client: &T,
+) -> Result<Vec<ContainerInfo>> {
     debug!("Getting container list for selection");
     let containers = client.list_containers().await?;
     let container_names: Vec<&String> = containers.iter().map(|c| &c.name).collect();

@@ -1,25 +1,54 @@
 use anyhow::Result;
-use bollard::Docker;
-use bollard::container::{InspectContainerOptions, ListContainersOptions};
-use bollard::secret::ContainerStateStatusEnum;
+use bollard::{
+    Docker,
+    container::{InspectContainerOptions, ListContainersOptions},
+    secret::ContainerStateStatusEnum,
+};
+use mockall::{automock, predicate::*};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::sync::{Arc, RwLock};
+use std::{
+    path::PathBuf,
+    sync::{Arc, OnceLock, RwLock},
+};
 use tracing::{debug, error, info, warn};
 
 use crate::utils;
 
-static DOCKER_CLIENT_INSTANCE: OnceLock<Arc<RwLock<DockerClient>>> = OnceLock::new();
+// 定义 DockerClient 接口 trait，并使用 automock 为 test 生成 mock 实现
+#[automock]
+pub trait DockerClientInterface: Send + Sync + Clone + 'static {
+    async fn list_containers(&self) -> Result<Vec<ContainerInfo>>;
+    async fn get_container_volumes(&self, container_id: &str) -> Result<Vec<VolumeInfo>>;
+    async fn start_container(&self, container_id: &str) -> Result<()>;
+    async fn restart_container(&self, container_id: &str) -> Result<()>;
+    async fn stop_container(&self, container_id: &str) -> Result<()>;
+    async fn get_container_status(&self, id: &str) -> Result<String>;
+    fn get_stop_timeout_secs(&self) -> u64;
+}
+
+impl Clone for MockDockerClientInterface {
+    fn clone(&self) -> Self {
+        MockDockerClientInterface::new()
+    }
+}
+
+// 使用别名，方便在 #[cfg(test)] 环境下替换为 Mock 类型
+#[cfg(not(test))]
+pub type ClientType = DockerClient;
+
+#[cfg(test)]
+pub type ClientType = MockDockerClientInterface; //  test 环境下 MockableDockerClient  是 MockDockerClientInterface
+
+pub(crate) static DOCKER_CLIENT_INSTANCE: OnceLock<Arc<RwLock<ClientType>>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct DockerClient {
     client: Docker,
-    pub stop_timeout_secs: u64,
+    stop_timeout_secs: u64,
 }
 
 impl DockerClient {
-    pub fn global() -> Result<DockerClient> {
+    pub fn global() -> Result<ClientType> {
         let client_arc_lock = DOCKER_CLIENT_INSTANCE
             .get()
             .ok_or_else(|| anyhow::anyhow!("Docker client not initialized"))?;
@@ -31,8 +60,19 @@ impl DockerClient {
         Ok(client_read_guard.clone())
     }
 
+    /// Initialize the global Docker client instance
+    #[cfg(not(test))]
     pub fn init(stop_timeout_secs: u64) -> Result<()> {
         let client = DockerClient::new(stop_timeout_secs)?;
+        let arc = Arc::new(RwLock::new(client));
+        DOCKER_CLIENT_INSTANCE.get_or_init(|| arc);
+        Ok(())
+    }
+
+    /// Initialize a mock Docker client for testing
+    #[cfg(test)]
+    pub fn init(_stop_timeout_secs: u64) -> Result<()> {
+        let client = MockDockerClientInterface::new();
         let arc = Arc::new(RwLock::new(client));
         DOCKER_CLIENT_INSTANCE.get_or_init(|| arc);
         Ok(())
@@ -51,9 +91,11 @@ impl DockerClient {
             stop_timeout_secs,
         })
     }
+}
 
+impl DockerClientInterface for DockerClient {
     /// 列出所有容器
-    pub async fn list_containers(&self) -> Result<Vec<ContainerInfo>> {
+    async fn list_containers(&self) -> Result<Vec<ContainerInfo>> {
         debug!("Listing all containers");
         let options = Some(ListContainersOptions::<String> {
             all: true,
@@ -92,7 +134,7 @@ impl DockerClient {
     }
 
     /// 获取容器的卷信息
-    pub async fn get_container_volumes(&self, container_id: &str) -> Result<Vec<VolumeInfo>> {
+    async fn get_container_volumes(&self, container_id: &str) -> Result<Vec<VolumeInfo>> {
         debug!(container_id, "Getting volume information");
         let details = self
             .client
@@ -115,8 +157,6 @@ impl DockerClient {
                     destination = ?destination,
                     "Found volume mount"
                 );
-                // TODO: 将 source 和 destination 转换为绝对路径
-                // 需要先找到对应的容器的根目录
 
                 let source = PathBuf::from(source);
                 let destination = PathBuf::from(destination);
@@ -151,8 +191,7 @@ impl DockerClient {
         Ok(volumes)
     }
 
-    #[allow(dead_code)]
-    pub async fn start_container(&self, container_id: &str) -> Result<()> {
+    async fn start_container(&self, container_id: &str) -> Result<()> {
         debug!("Starting container: {}", container_id);
 
         self.client
@@ -168,7 +207,7 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn restart_container(&self, container_id: &str) -> Result<()> {
+    async fn restart_container(&self, container_id: &str) -> Result<()> {
         debug!("Restarting container: {}", container_id);
 
         self.client
@@ -184,7 +223,7 @@ impl DockerClient {
         Ok(())
     }
 
-    pub async fn stop_container(&self, container_id: &str) -> Result<()> {
+    async fn stop_container(&self, container_id: &str) -> Result<()> {
         debug!("Stopping container: {}", container_id);
 
         self.client
@@ -200,12 +239,16 @@ impl DockerClient {
         Ok(())
     }
 
-    pub(crate) async fn get_container_status(&self, id: &str) -> Result<String> {
+    async fn get_container_status(&self, id: &str) -> Result<String> {
         let status = self
             .client
             .inspect_container(id, None::<InspectContainerOptions>)
             .await?;
         match_status(status)
+    }
+
+    fn get_stop_timeout_secs(&self) -> u64 {
+        self.stop_timeout_secs
     }
 }
 
