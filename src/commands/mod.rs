@@ -204,9 +204,7 @@ fn parse_output_dir(
         match output {
             Some(output) => PathBuf::from(output),
             None => {
-                error!("Output directory is required");
-                println!("Output directory is required");
-                anyhow::bail!("Output directory is required");
+                log_bail!("ERROR", "Output directory is required");
             }
         }
     };
@@ -268,9 +266,13 @@ fn backup_items(
     // 备份完成
     info!(
         backup_file = ?backup_path,
+        selected_volumes_len = ?selected_volumes.len(),
         "Volumes backup completed successfully"
     );
-    println!("Volumes backup completed: {}", backup_path.display());
+    println!(
+        "Volumes backup completed: {}",
+        backup_path.to_string_lossy()
+    );
     Ok(())
 }
 
@@ -288,9 +290,7 @@ async fn select_volumes(
     if let Some(file) = file {
         let file = PathBuf::from(file);
         if !file.exists() {
-            error!("File does not exist: {}", file.display());
-            println!("File does not exist: {}", file.display());
-            anyhow::bail!("File does not exist: {}", file.display());
+            log_bail!("ERROR", "File does not exist: {}", file.to_string_lossy());
         }
 
         total_volumes = 1;
@@ -309,9 +309,11 @@ async fn select_volumes(
         debug!(container_id = ?container_info.id, "Getting volume information");
         let volumes = client.get_container_volumes(&container_info.id).await?;
         if volumes.is_empty() {
-            warn!(container_name = ?container_info.name, "No volumes found for container");
-            println!("No volumes found for container {}", container_info.name);
-            anyhow::bail!("No volumes found for container {}", container_info.name);
+            log_bail!(
+                "ERROR",
+                "No volumes found for container {}",
+                container_info.name
+            );
         }
 
         // 选择要备份的卷
@@ -325,9 +327,7 @@ async fn select_volumes(
     }
 
     if selected_volumes.is_empty() {
-        error!("No volumes selected for backup");
-        println!("No volumes selected for backup");
-        anyhow::bail!("No volumes selected for backup");
+        log_bail!("ERROR", "No volumes selected for backup");
     }
 
     Ok((total_volumes, selected_volumes))
@@ -351,7 +351,6 @@ pub async fn restore(
     );
 
     let client = DockerClient::new().await?;
-    let config = Config::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
@@ -362,7 +361,7 @@ pub async fn restore(
     };
 
     // 获取备份文件路径
-    let file_path = parse_restore_file(input, interactive, config, &container_info)?;
+    let file_path = parse_restore_file(input, interactive, &container_info)?;
 
     // 确保备份文件存在
     debug!(file_path = ?file_path, "Ensuring backup file exists");
@@ -370,10 +369,8 @@ pub async fn restore(
         log_print!(
             "ERROR",
             "Backup file does not exist: {}",
-            file_path.display()
+            file_path.to_string_lossy()
         );
-        // error!("Backup file does not exist: {}", file_path.display());
-        // println!("Backup file does not exist: {}", file_path.display());
         return Ok(());
     }
 
@@ -425,14 +422,13 @@ pub async fn restore(
         let confirmed = Confirm::new()
             .with_prompt(format!(
                 "Are you sure you want to restore {} to container {}?",
-                file_path.display(),
+                file_path.to_string_lossy(),
                 container_info.name
             ))
             .interact()?;
 
         if !confirmed {
-            info!("Restore operation cancelled by user");
-            println!("Restore cancelled");
+            log_print!("INFO", "Restore cancelled");
             return Ok(());
         }
     }
@@ -463,9 +459,10 @@ pub async fn restore(
 fn parse_restore_file(
     input: Option<String>,
     interactive: bool,
-    config: Config,
     container_info: &ContainerInfo,
 ) -> Result<PathBuf, anyhow::Error> {
+    let config = Config::global()?;
+
     debug!(container_name = ?container_info.name, "Getting backup file path");
     let file_path = if interactive || input.is_none() {
         if let Some(input) = input {
@@ -474,7 +471,7 @@ fn parse_restore_file(
                 log_bail!(
                     "ERROR",
                     "Backup file does not exist or is not a file: {}",
-                    file.display()
+                    file.to_string_lossy()
                 );
             }
             file
@@ -496,7 +493,12 @@ fn parse_restore_file(
             } else {
                 let selection = Select::new()
                     .with_prompt(prompt_select!("Select one file to restore"))
-                    .items(&files.iter().map(|f| f.display()).collect::<Vec<_>>())
+                    .items(
+                        &files
+                            .iter()
+                            .map(|f| f.to_string_lossy())
+                            .collect::<Vec<_>>(),
+                    )
                     .default(0)
                     .interact()?;
                 files[selection].clone()
@@ -544,7 +546,7 @@ async fn backup_volume(
         "Backing up volume {} from container {} to {}",
         volume.name,
         container.name,
-        output_dir.display()
+        output_dir.to_string_lossy()
     );
 
     // 创建备份文件名
@@ -574,7 +576,7 @@ async fn backup_volume(
         backup_file = ?backup_path,
         "Volume backup completed successfully"
     );
-    println!("Backup completed: {}", backup_path.display());
+    println!("Backup completed: {}", backup_path.to_string_lossy());
     Ok(())
 }
 
@@ -591,7 +593,7 @@ async fn restore_volume(
 
     println!(
         "Restoring {} to container {}",
-        file_path.display(),
+        file_path.to_string_lossy(),
         container.name
     );
 
@@ -605,6 +607,6 @@ async fn restore_volume(
     extract_archive(file_path, output_dir)?;
 
     info!("Volume restore completed successfully");
-    println!("Restore completed to {}", output_dir.display());
+    println!("Restore completed to {}", output_dir.to_string_lossy());
     Ok(())
 }
