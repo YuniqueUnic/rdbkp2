@@ -338,7 +338,8 @@ async fn select_volumes<T: DockerClientInterface>(
     client: &T,
     container_info: &ContainerInfo,
 ) -> Result<(usize, Vec<VolumeInfo>)> {
-    // 处理单文件备份场景
+    // TODO: 检查是否支持了文件夹备份场景
+    // 处理单文件 (夹) 备份场景
     if let Some(file) = file {
         let file_path = PathBuf::from(file);
         // 将文件路径转换为绝对路径
@@ -346,7 +347,7 @@ async fn select_volumes<T: DockerClientInterface>(
         if !file_path.exists() {
             log_bail!(
                 "ERROR",
-                "File does not exist: {}",
+                "Path does not exist: {}",
                 file_path.to_string_lossy()
             );
         }
