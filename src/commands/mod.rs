@@ -3,13 +3,14 @@ mod prompt;
 use crate::config::Config;
 use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
 use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive};
-use crate::{log_bail, log_print};
+use crate::{log_bail, log_println};
 use prompt::*;
 
 use anyhow::Result;
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
 use fs_extra;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 use toml;
@@ -29,7 +30,7 @@ const MAPPING_FILE_NAME: &str = "mapping.toml";
 
 pub async fn list_containers() -> Result<()> {
     debug!("Initializing Docker client for container listing");
-    let client = DockerClient::new().await?;
+    let client = DockerClient::global()?;
 
     debug!("Retrieving container list");
     let containers = client.list_containers().await?;
@@ -52,27 +53,27 @@ pub async fn list_containers() -> Result<()> {
     Ok(())
 }
 
-async fn stop_container_timeout(
-    client: &DockerClient,
-    container_info: &ContainerInfo,
-    timeout_secs: u64, // 修改为 timeout_secs，更清晰地表明单位是秒
-) -> Result<()> {
+async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
     // 首先尝试停止容器
     println!("Attempting to stop container {}", container_info.name);
+    let client = DockerClient::global()?;
+
+    let stop_timeout_secs = client.stop_timeout_secs;
     debug!(
         "Attempting to stop container {} with timeout {}",
-        container_info.id, timeout_secs
+        container_info.id, stop_timeout_secs
     );
 
+    let stop_task = client.stop_container(&container_info.id);
+
     // 然后等待容器完全停止，并添加终端输出反馈
-    let timer_task = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
-        client.stop_container(&container_info.id).await?;
+    let timer_task = tokio::time::timeout(Duration::from_secs(stop_timeout_secs), async {
         let mut flag = 0;
         loop {
             match client.get_container_status(&container_info.id).await {
                 Ok(status) => {
                     if status != "running" && status != "restarting" {
-                        log_print!(
+                        log_println!(
                             "INFO",
                             "Container {} stopped successfully with status: {}",
                             container_info.name,
@@ -81,7 +82,7 @@ async fn stop_container_timeout(
                         return Ok(()); // 容器成功停止，返回 Ok
                     } else {
                         if flag == 0 {
-                            log_print!(
+                            log_println!(
                                 "INFO",
                                 "Container {} still stopping, current status: {}",
                                 container_info.name,
@@ -89,39 +90,53 @@ async fn stop_container_timeout(
                             );
                         }
 
-                        log_print!("DEBUG", ".");
+                        print!(".");
+                        std::io::stdout().flush()?;
                         flag = 1;
                     }
                 }
                 Err(e) => {
+                    // 获取状态失败，返回 Err
                     log_bail!(
                         "ERROR",
                         "Failed to get container status for container {}: {}",
                         container_info.name,
                         e
                     );
-                    // 获取状态失败，返回 Err
                 }
             }
 
             tokio::time::sleep(Duration::from_secs(1)).await; // 每秒检查一次状态
         }
-    })
-    .await;
+    });
 
-    // 处理超时情况和结果
-    match timer_task {
-        Ok(result) => result.map_err(|e| {
-            anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
-        }),
-        Err(_timeout_err) => {
-            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
-            log_bail!(
-                "ERROR",
-                "Timeout while waiting for container {} to stop after {} seconds",
-                container_info.name,
-                timeout_secs
-            );
+    tokio::select! {
+        stop_res = stop_task => {
+            println!();
+            match stop_res {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    log_bail!("ERROR", "Failed to stop container {}: {}", container_info.name, e);
+                }
+            }
+        }
+        timer_res = timer_task => {
+            println!();
+            // 处理超时情况和结果
+            match timer_res {
+                Ok(result) => result.map_err(|e| {
+                    anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
+                }),
+                Err(_timeout_err) => {
+                    // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+                    log_bail!(
+                        "ERROR",
+                        "Timeout while waiting for container {} to stop after {} seconds",
+                        container_info.name,
+                        stop_timeout_secs
+                    );
+                }
+            }
         }
     }
 }
@@ -134,12 +149,13 @@ pub async fn backup(
     container: Option<String>,
     file: Option<String>,
     output: Option<String>,
-    restart: bool,
-    interactive: bool,
-    timeout: u64,
-    exclude_patterns: &[&str],
-    _yes: bool,
 ) -> Result<()> {
+    // 获取全局配置
+    let config = Config::global()?;
+    let interactive = config.interactive;
+    let restart = config.restart;
+    let exclude_patterns = config.get_exclude_patterns();
+
     info!(
         ?container,
         ?file,
@@ -149,7 +165,7 @@ pub async fn backup(
         "Starting backup operation"
     );
 
-    let client = DockerClient::new().await?;
+    let client = DockerClient::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
@@ -161,9 +177,6 @@ pub async fn backup(
 
     // 获取输出目录
     let output_dir = parse_output_dir(output, interactive, &container_info)?;
-
-    // 如果容器正在运行或重启中，则停止容器
-    stop_container_timeout(&client, &container_info, timeout).await?;
 
     // 如果设置了数据路径，则将只备份该路径下的数据
     let (total_volumes, selected_volumes) =
@@ -178,8 +191,9 @@ pub async fn backup(
         output_dir,
         total_volumes,
         selected_volumes,
-        exclude_patterns,
-    )?;
+        &exclude_patterns,
+    )
+    .await?;
 
     // 如果需要重启容器，则重启容器
     if restart {
@@ -241,7 +255,7 @@ fn parse_output_dir(
     Ok(output_dir)
 }
 
-fn backup_items(
+async fn backup_items(
     container_info: &ContainerInfo,
     output_dir: PathBuf,
     total_volumes_count: usize,
@@ -294,6 +308,14 @@ fn backup_items(
         .map(|v| v.source.as_path())
         .collect::<Vec<_>>();
 
+    #[cfg(not(test))]
+    {
+        // 测试时，不停止容器 (不一定存在 Docker 环境)
+        // 如果容器正在运行或重启中，则停止容器
+        stop_container_timeout(&container_info).await?;
+    }
+
+    // 开始备份
     // 压缩卷目录，包含 mapping.toml
     utils::compress_with_memory_file(
         &volumes_source,
@@ -302,7 +324,7 @@ fn backup_items(
         exclude_patterns,
     )?;
 
-    log_print!(
+    log_println!(
         "INFO",
         "Backup {} volumes completed: {}",
         selected_volumes.len(),
@@ -378,11 +400,12 @@ pub async fn restore(
     container: Option<String>,
     input: Option<String>,
     output: Option<String>,
-    restart: bool,
-    interactive: bool,
-    timeout: u64,
-    yes: bool,
 ) -> Result<()> {
+    let config = Config::global()?;
+    let interactive = config.interactive;
+    let restart = config.restart;
+    let yes = config.yes;
+
     info!(
         ?container,
         ?input,
@@ -391,7 +414,7 @@ pub async fn restore(
         "Starting restore operation"
     );
 
-    let client = DockerClient::new().await?;
+    let client = DockerClient::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
@@ -403,9 +426,6 @@ pub async fn restore(
 
     // 获取备份文件路径
     let file_path = parse_restore_file(input, interactive, &container_info)?;
-
-    // 如果容器正在运行或重启中，则停止容器
-    stop_container_timeout(&client, &container_info, timeout).await?;
 
     // 恢复卷 (s)
     restore_volumes(&container_info, &file_path, output, interactive, yes).await?;
@@ -464,11 +484,19 @@ async fn restore_volumes(
                 .interact()?;
 
             if !confirmed {
-                log_print!("INFO", "Restore cancelled");
+                log_println!("INFO", "Restore cancelled");
                 return Ok(());
             }
         }
 
+        #[cfg(not(test))]
+        {
+            // 测试时，不停止容器 (不一定存在 Docker 环境)
+            // 如果容器正在运行或重启中，则停止容器
+            stop_container_timeout(&container_info).await?;
+        }
+
+        // 开始解压
         unpack_archive_to(container_info, file_path, &output_path).await?;
         return Ok(());
     }
@@ -489,11 +517,19 @@ async fn restore_volumes(
             .interact()?;
 
         if !confirmed {
-            log_print!("INFO", "Restore cancelled");
+            log_println!("INFO", "Restore cancelled");
             return Ok(());
         }
     }
 
+    #[cfg(not(test))]
+    {
+        // 测试时，不停止容器 (不一定存在 Docker 环境)
+        // 如果容器正在运行或重启中，则停止容器
+        stop_container_timeout(&container_info).await?;
+    }
+
+    // 开始解压
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
 }
@@ -596,7 +632,7 @@ async fn unpack_archive_move(
 
 fn parse_restore_file(
     input: Option<String>,
-    interactive: bool,
+    _interactive: bool,
     container_info: &ContainerInfo,
 ) -> Result<PathBuf> {
     let config = Config::global()?;
@@ -616,7 +652,7 @@ fn parse_restore_file(
 
     // 如果找不到备份文件，则提示用户输入备份文件路径
     if files.is_empty() {
-        log_print!(
+        log_println!(
             "WARN",
             "❌ No backup files found for container {}",
             container_info.name
@@ -690,6 +726,12 @@ mod tests {
     use std::fs;
     use tokio::test;
 
+    // 辅助函数：初始化 docker client
+    fn setup_docker_client() -> Result<()> {
+        DockerClient::init(10)?;
+        Ok(())
+    }
+
     // 辅助函数：创建测试用的卷目录和文件
     async fn setup_test_volumes() -> Result<(TempDir, Vec<VolumeInfo>)> {
         let temp_dir = TempDir::new()?;
@@ -714,6 +756,8 @@ mod tests {
             });
         }
 
+        setup_docker_client()?;
+
         Ok((temp_dir, volume_infos))
     }
 
@@ -736,7 +780,8 @@ mod tests {
             volumes.len(),
             volumes,
             &[],
-        )?;
+        )
+        .await?;
 
         // 验证备份文件是否创建
         let backup_files: Vec<_> = fs::read_dir(output_dir.path())?
@@ -777,7 +822,8 @@ mod tests {
             volumes.len(),
             volumes.clone(),
             &[],
-        )?;
+        )
+        .await?;
 
         // Get backup file
         let backup_file = fs::read_dir(backup_dir.path())?.next().unwrap()?.path();
@@ -832,7 +878,8 @@ mod tests {
             volumes.len(),
             volumes,
             &[],
-        )?;
+        )
+        .await?;
 
         let backup_file = fs::read_dir(backup_dir.path())?.next().unwrap()?.path();
 
@@ -894,7 +941,8 @@ mod tests {
             volumes.len(),
             volumes,
             &[".git", "node_modules"],
-        )?;
+        )
+        .await?;
 
         // Get backup file
         let backup_file = fs::read_dir(output_dir.path())?.next().unwrap()?.path();

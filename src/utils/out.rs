@@ -35,7 +35,7 @@ macro_rules! log_bail {
 }
 
 #[macro_export]
-macro_rules! log_print {
+macro_rules! log_println {
     // 带格式化参数的版本
     ($level:expr, $fmt:expr, $($arg:tt)*) => {{
         let level = $level.to_string();
@@ -84,6 +84,6 @@ mod tests {
 
     #[test]
     fn test_log_print() {
-        log_print!("ERROR", "test");
+        log_println!("ERROR", "test");
     }
 }

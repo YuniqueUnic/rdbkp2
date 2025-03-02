@@ -5,7 +5,29 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tracing::{debug, error};
+use tracing::{debug, error, instrument};
+
+#[allow(dead_code)]
+#[deprecated(since = "1.0.0", note = "no need to load config file")]
+const DEFAULT_CONFIG_FILE_PATH: &str = "./config.toml";
+
+#[allow(dead_code, deprecated)]
+#[deprecated(since = "1.0.0", note = "no need to load config file")]
+#[instrument(level = "INFO", fields(cfg_path = DEFAULT_CONFIG_FILE_PATH))]
+pub fn load_config() -> Result<()> {
+    let cfg_path = PathBuf::from(DEFAULT_CONFIG_FILE_PATH);
+
+    if !cfg_path.exists() {
+        let cfg = Config::default();
+        cfg.save_to_file(cfg_path)?;
+        Config::init(cfg)?;
+    } else {
+        Config::init_from_file(&cfg_path)?;
+        Config::global()?.save_to_file(cfg_path)?;
+    }
+
+    Ok(())
+}
 
 static CONFIG: OnceLock<Arc<RwLock<Option<Config>>>> = OnceLock::new();
 
@@ -14,20 +36,26 @@ pub struct Config {
     /// 备份文件的默认输出目录
     pub backup_dir: PathBuf,
 
-    /// 默认的停止容器执行超时时间，单位为秒
-    pub timeout: u64,
+    /// 是否使用交互模式
+    pub interactive: bool,
 
-    #[serde(rename = "mapper")]
-    /// 备份文件的默认输出目录
-    pub mapper: BackupMapper,
+    /// 默认的停止容器执行超时时间，单位为秒
+    pub timeout_secs: u64,
+
+    /// 是否在操作 (备份/恢复) 后重启容器
+    pub restart: bool,
+
+    /// 是否显示详细日志
+    pub verbose: bool,
+
+    /// 是否自动确认
+    pub yes: bool,
+
+    /// 排除模式：备份时将排除包含这些模式的文件/目录
+    pub exclude: String,
 
     /// Docker 相关配置
     pub docker: DockerConfig,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BackupMapper {
-    pub mapping_path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,15 +74,17 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backup_dir: PathBuf::from("./backups"),
-            mapper: BackupMapper {
-                mapping_path: PathBuf::from("./backups/mapping.toml"),
-            },
+            interactive: true,
+            restart: false,
+            verbose: false,
+            yes: false,
+            exclude: ".git,node_modules,target".to_string(),
             docker: DockerConfig {
                 host: "unix:///var/run/docker.sock".to_string(),
                 tls: false,
                 cert_path: None,
             },
-            timeout: 30,
+            timeout_secs: 30,
         }
     }
 }
@@ -85,12 +115,21 @@ impl Config {
         Ok(())
     }
 
+    pub fn get_exclude_patterns(&self) -> Vec<&str> {
+        self.exclude.split(',').collect::<Vec<&str>>()
+    }
+
+    #[allow(dead_code)]
+    #[allow(deprecated)]
+    #[deprecated(since = "1.0.0", note = "no need to load config file")]
     /// 从文件加载配置并初始化全局实例
     pub fn init_from_file<P: AsRef<Path>>(path: P) -> Result<()> {
         let config = Self::load_from_file(path)?;
         Self::init(config)
     }
 
+    #[allow(dead_code)]
+    #[deprecated(since = "1.0.0", note = "no need to load config file")]
     /// 从文件加载配置
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
@@ -105,6 +144,8 @@ impl Config {
         Ok(config)
     }
 
+    #[allow(dead_code)]
+    #[deprecated(since = "1.0.0", note = "no need to load config file")]
     /// 保存配置到文件，并保留注释
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let mut content = toml::to_string_pretty(self).map_err(|e| {
@@ -122,9 +163,20 @@ impl Config {
     # 停止容器操作的超时时间 (单位：秒)
     # timeout = 30
 
-    # 备份映射文件路径
-    # [mapper]
-    # mapping_path = "./backups/mapping.toml"
+    # 是否使用交互模式
+    # interactive = true
+
+    # 是否在操作 (备份/恢复) 后重启容器
+    # restart = false
+
+    # 是否显示详细日志
+    # verbose = false
+
+    # 是否自动确认
+    # yes = false
+
+    # 排除模式：备份时将排除包含这些模式的文件/目录
+    # exclude = ".git,node_modules,target"
 
     # Docker 相关配置
     # [docker]
@@ -147,8 +199,9 @@ impl Config {
         Ok(())
     }
 
-    /// 更新全局配置
     #[allow(dead_code)]
+    #[deprecated(since = "1.0.0", note = "no need to load config file")]
+    /// 更新全局配置
     pub fn update<F>(&self, f: F) -> Result<()>
     where
         F: FnOnce(&mut Config),
@@ -168,34 +221,6 @@ impl Config {
 
         debug!("Global config updated");
         Ok(())
-    }
-}
-
-#[allow(dead_code)]
-
-impl BackupMapper {
-    pub fn load_mappings(&self) -> Result<HashMap<String, String>> {
-        let mappings = mapping::load_mappings(&self.mapping_path)?;
-        debug!(?mappings, "Backup mappings loaded");
-        Ok(mappings)
-    }
-
-    pub fn save_mappings(&self, mappings: &HashMap<String, String>) -> Result<()> {
-        mapping::save_mappings(&self.mapping_path, mappings)
-    }
-
-    pub fn add_mappings(&self, mappings: impl IntoIterator<Item = (String, String)>) -> Result<()> {
-        mapping::add_mappings(&self.mapping_path, mappings)
-    }
-
-    pub fn remove_mappings(
-        &self,
-        keys: impl IntoIterator<Item = String>,
-    ) -> Result<impl IntoIterator<Item = (String, String)>> {
-        let removed_mappings = mapping::remove_mappings(&self.mapping_path, keys)?;
-        let removed_map: HashMap<_, _> = removed_mappings.clone().into_iter().collect();
-        self.save_mappings(&removed_map)?;
-        Ok(removed_mappings)
     }
 }
 

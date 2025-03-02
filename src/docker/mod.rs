@@ -4,25 +4,52 @@ use bollard::container::{InspectContainerOptions, ListContainersOptions};
 use bollard::secret::ContainerStateStatusEnum;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
+use std::sync::OnceLock;
+use std::sync::{Arc, RwLock};
 use tracing::{debug, error, info, warn};
 
 use crate::utils;
 
+static DOCKER_CLIENT_INSTANCE: OnceLock<Arc<RwLock<DockerClient>>> = OnceLock::new();
+
+#[derive(Debug, Clone)]
 pub struct DockerClient {
     client: Docker,
+    pub stop_timeout_secs: u64,
 }
 
 impl DockerClient {
+    pub fn global() -> Result<DockerClient> {
+        let client_arc_lock = DOCKER_CLIENT_INSTANCE
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("Docker client not initialized"))?;
+
+        let client_read_guard = client_arc_lock
+            .read()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on Docker client: {}", e))?;
+
+        Ok(client_read_guard.clone())
+    }
+
+    pub fn init(stop_timeout_secs: u64) -> Result<()> {
+        let client = DockerClient::new(stop_timeout_secs)?;
+        let arc = Arc::new(RwLock::new(client));
+        DOCKER_CLIENT_INSTANCE.get_or_init(|| arc);
+        Ok(())
+    }
+
     /// 创建新的 Docker 客户端
-    pub async fn new() -> Result<Self> {
+    fn new(stop_timeout_secs: u64) -> Result<Self> {
         debug!("Initializing Docker client");
         let client = Docker::connect_with_local_defaults().map_err(|e| {
             error!(?e, "Failed to connect to Docker daemon");
             e
         })?;
         info!("Docker client initialized successfully");
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            stop_timeout_secs,
+        })
     }
 
     /// 列出所有容器
@@ -241,14 +268,14 @@ mod tests {
     #[tokio::test]
     #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_docker_client_creation() -> Result<()> {
-        let _client = DockerClient::new().await?;
+        let _client = DockerClient::global()?;
         Ok(())
     }
 
     #[tokio::test]
     #[ignore = "This test needs a really docker environment, manual test is recommended"]
     async fn test_list_containers() -> Result<()> {
-        let client = DockerClient::new().await?;
+        let client = DockerClient::global()?;
         let containers = client.list_containers().await?;
         assert!(containers.len() >= 0);
         Ok(())
@@ -262,7 +289,7 @@ mod tests {
         // 首先检查 docker compose 命令是否可用
         check_docker_compose()?;
 
-        let client = DockerClient::new().await?;
+        let client = DockerClient::global()?;
         let docker_dir = get_docker_compose_path();
 
         debug!("Docker directory: {:?}", docker_dir);

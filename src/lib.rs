@@ -1,4 +1,5 @@
 mod commands;
+// #[deprecated(since = "1.0.0", note = "no need to load config file")]
 mod config;
 mod docker;
 mod utils;
@@ -8,7 +9,7 @@ mod tests;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use std::{io, path::PathBuf};
+use std::io;
 use tracing::{Level, info, instrument};
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -38,7 +39,7 @@ struct Cli {
     restart: bool,
 
     /// 停止容器超时时间 (秒)
-    #[arg(global = true, short, long, default_value = "60")]
+    #[arg(global = true, short, long, default_value = "30")]
     timeout: u64,
 
     /// 排除模式：备份时将排除包含这些模式的文件/目录
@@ -137,38 +138,52 @@ enum Commands {
 }
 
 #[instrument(level = "INFO")]
+fn init_config(
+    timeout_secs: u64,
+    interactive: bool,
+    restart: bool,
+    verbose: bool,
+    yes: bool,
+    exclude: String,
+) -> Result<()> {
+    let mut cfg = config::Config::default();
+    cfg.timeout_secs = timeout_secs;
+    cfg.interactive = interactive;
+    cfg.restart = restart;
+    cfg.verbose = verbose;
+    cfg.yes = yes;
+    cfg.exclude = exclude;
+    config::Config::init(cfg)?;
+    Ok(())
+}
+
+#[instrument(level = "INFO")]
 pub fn init_log(log_level: Level) -> Result<()> {
     // 初始化日志
-    fmt()
+    let mut log_fmt = fmt()
         .with_env_filter(
             EnvFilter::builder()
                 .with_default_directive(log_level.into())
                 .from_env_lossy(),
         )
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_line_number(true)
-        .with_file(true)
-        .with_level(true)
-        .init();
+        .with_level(true);
+
+    #[cfg(debug_assertions)]
+    {
+        log_fmt = log_fmt
+            .with_target(true)
+            .with_thread_ids(true)
+            .with_line_number(true)
+            .with_file(true);
+    }
+
+    log_fmt.init();
     Ok(())
 }
 
-const DEFAULT_CONFIG_FILE_PATH: &str = "./config.toml";
-
-#[instrument(level = "INFO", fields(cfg_path = DEFAULT_CONFIG_FILE_PATH))]
-pub fn load_config() -> Result<()> {
-    let cfg_path = PathBuf::from(DEFAULT_CONFIG_FILE_PATH);
-
-    if !cfg_path.exists() {
-        let cfg = config::Config::default();
-        cfg.save_to_file(cfg_path)?;
-        config::Config::init(cfg)?;
-    } else {
-        config::Config::init_from_file(&cfg_path)?;
-        config::Config::global()?.save_to_file(cfg_path)?;
-    }
-
+#[instrument(level = "INFO")]
+fn init_docker_client(timeout_secs: u64) -> Result<()> {
+    docker::DockerClient::init(timeout_secs)?;
     Ok(())
 }
 
@@ -182,56 +197,43 @@ pub async fn run() -> Result<()> {
     let timeout = cli.timeout;
     let restart = cli.restart;
     let exclude = cli.exclude;
-    let exclude_patterns = exclude.split(',').collect::<Vec<&str>>();
     let yes = cli.yes;
     let verbose = cli.verbose;
 
-    // 设置日志级别，初始化日志
+    // 初始化全局 runtime 配置
+    init_config(timeout, interactive, restart, verbose, yes, exclude)?;
+
+    // 设置日志级别，初始化全局日志
     let log_level = if verbose { Level::DEBUG } else { Level::ERROR };
     init_log(log_level)?;
 
-    // 加载配置
-    load_config()?;
+    // 初始化全局 docker client
+    init_docker_client(timeout)?;
 
     // 根据子命令执行相应的操作
-    match cli.command {
+    do_action(cli.command).await?;
+
+    info!("Operation completed successfully");
+    Ok(())
+}
+
+async fn do_action(action: Commands) -> Result<()> {
+    match action {
         Commands::Backup {
             container,
             file,
             output,
         } => {
-            info!(
-                ?container,
-                ?file,
-                ?output,
-                interactive,
-                "Executing backup command"
-            );
-            commands::backup(
-                container,
-                file,
-                output,
-                restart,
-                interactive,
-                timeout,
-                &exclude_patterns,
-                yes,
-            )
-            .await?;
+            info!(?container, ?file, ?output, "Executing backup command");
+            commands::backup(container, file, output).await?;
         }
         Commands::Restore {
             container,
             file,
             output,
         } => {
-            info!(
-                ?container,
-                ?file,
-                ?output,
-                interactive,
-                "Executing restore command"
-            );
-            commands::restore(container, file, output, restart, interactive, timeout, yes).await?;
+            info!(?container, ?file, ?output, "Executing restore command");
+            commands::restore(container, file, output).await?;
         }
         Commands::List => {
             info!("Executing list command");
@@ -249,8 +251,6 @@ pub async fn run() -> Result<()> {
             );
         }
     }
-
-    info!("Operation completed successfully");
     Ok(())
 }
 

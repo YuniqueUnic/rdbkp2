@@ -101,6 +101,7 @@ pub(crate) fn absolute_canonicalize_path(path: &Path) -> io::Result<PathBuf> {
     }
 }
 
+#[allow(dead_code)]
 /// 将路径转换为绝对路径并尽可能规范化
 /// - 如果是相对路径，则基于当前工作目录转换为绝对路径
 /// - 尝试执行 canonicalize（解析符号链接并处理冗余）
@@ -123,6 +124,7 @@ pub(crate) fn ensure_absolute_canonical(path: &Path) -> io::Result<PathBuf> {
     }
 }
 
+#[allow(dead_code)]
 /// 简化绝对路径的冗余部分（不依赖文件系统存在性）
 fn simplify_absolute_path(path: &Path) -> PathBuf {
     let mut stack = Vec::new();

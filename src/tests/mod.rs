@@ -26,8 +26,8 @@ pub(crate) fn check_docker_compose() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
 #[ignore = "This test needs a really docker environment, manual test is recommended"]
+#[tokio::test]
 async fn test_backup_restore_workflow() -> Result<()> {
     // 创建临时测试目录
     let temp = TempDir::new()?;
