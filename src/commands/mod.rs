@@ -236,23 +236,20 @@ fn backup_items(
         backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
-    let mapping_content = toml::to_string(&backup_mapping)?;
 
-    // 创建内存文件
-    let memory_files = vec![(MAPPING_FILE_NAME, mapping_content.as_str())];
+    // 序列化为 TOML
+    let mapping_content = toml::to_string(&backup_mapping)?;
 
     // 创建备份文件名
     let middle_name = if total_volumes_count > selected_volumes.len() {
-        "all"
-    } else {
         "partial"
+    } else {
+        "all"
     };
     let backup_filename = create_timestamp_filename(
         &format!("{}_{}", container_info.name, middle_name),
         ".tar.xz",
     );
-
-    // 创建备份路径
     let backup_path = output_dir.join(&backup_filename);
 
     // 获取卷源路径
@@ -261,22 +258,18 @@ fn backup_items(
         .map(|v| v.source.as_path())
         .collect::<Vec<_>>();
 
-    // 压缩卷目录
+    // 压缩卷目录，包含 mapping.toml
     utils::compress_with_memory_file(
         &volumes_source,
         &backup_path,
-        &memory_files,
+        &[(MAPPING_FILE_NAME, mapping_content.as_str())],
         exclude_patterns,
     )?;
 
-    // 备份完成
-    info!(
-        backup_file = ?backup_path,
-        selected_volumes_len = ?selected_volumes.len(),
-        "Volumes backup completed successfully"
-    );
-    println!(
-        "Volumes backup completed: {}",
+    log_print!(
+        "INFO",
+        "Backup {} volumes completed: {}",
+        selected_volumes.len(),
         backup_path.to_string_lossy()
     );
     Ok(())
@@ -416,44 +409,41 @@ async fn restore_volumes(
         );
     }
 
-    // 处理恢复路径
-    let (volumes_to_restore, output_dirs) = match &output {
-        // 如果指定了输出路径，直接使用所有卷并输出到指定路径
-        Some(output_path) => {
-            let output_path = PathBuf::from(output_path);
-            (backup_mapping.volumes, vec![output_path])
+    // 如果指定了输出路径，直接使用该路径
+    if let Some(output_path) = output {
+        let output_path = PathBuf::from(output_path);
+        ensure_dir_exists(&output_path)?;
+
+        if !yes && interactive {
+            let confirmed = Confirm::new()
+                .with_prompt(format!(
+                    "❓ Are you sure you want to restore to {}?",
+                    output_path.display()
+                ))
+                .default(true)
+                .interact()?;
+
+            if !confirmed {
+                log_print!("INFO", "Restore cancelled");
+                return Ok(());
+            }
         }
-        // 如果没有指定输出路径，让用户选择要恢复的卷（如果是交互模式）
-        None => {
-            let selected_volumes = if interactive {
-                select_volumes_prompt(&backup_mapping.volumes)?
-            } else {
-                backup_mapping.volumes
-            };
 
-            let output_dirs = selected_volumes
-                .iter()
-                .map(|v| v.source.clone())
-                .collect::<Vec<_>>();
-
-            (selected_volumes, output_dirs)
-        }
-    };
-
-    // 确保输出目录存在
-    debug!(?output_dirs, "Ensuring output directories exist");
-    for output_dir in &output_dirs {
-        ensure_dir_exists(output_dir)?;
+        unpack_archive_to(container_info, file_path, &output_path).await?;
+        return Ok(());
     }
 
-    // 如果不是强制模式且是交互模式，询问用户确认
+    // 否则使用原始路径恢复
     if !yes && interactive {
-        debug!("Requesting user confirmation");
         let confirmed = Confirm::new()
             .with_prompt(format!(
-                "❓ Are you sure you want to restore {} to container {}?",
-                file_path.to_string_lossy(),
-                container_info.name
+                "❓ Are you sure you want to restore to original paths?\n{}",
+                backup_mapping
+                    .volumes
+                    .iter()
+                    .map(|v| format!(" - {} -> {}", v.name, v.source.display()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             ))
             .default(true)
             .interact()?;
@@ -464,20 +454,7 @@ async fn restore_volumes(
         }
     }
 
-    // 执行恢复操作
-    if output.is_some() {
-        // 如果指定了输出路径，所有内容解压到同一目录
-        unpack_archive_to(&container_info, &file_path, &output_dirs[0]).await?;
-    } else {
-        // 否则，按照原始卷的路径结构恢复
-        unpack_archive_move(&container_info, &file_path, &volumes_to_restore).await?;
-    }
-
-    info!(
-        container_name = ?container_info.name,
-        "Restore operation completed successfully"
-    );
-
+    unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
 }
 
@@ -641,4 +618,239 @@ async fn get_container_by_name_or_id(
             error!(?name_or_id, "Container not found");
             err
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::TempDir;
+    use std::fs;
+    use tokio::test;
+
+    // 辅助函数：创建测试用的卷目录和文件
+    async fn setup_test_volumes() -> Result<(TempDir, Vec<VolumeInfo>)> {
+        let temp_dir = TempDir::new()?;
+        let base_path = temp_dir.path();
+
+        // 创建测试卷目录
+        let volumes = vec![
+            ("vol1", "test1.txt", "content1"),
+            ("vol2", "test2.txt", "content2"),
+        ];
+
+        let mut volume_infos = Vec::new();
+        for (vol_name, file_name, content) in volumes {
+            let vol_path = base_path.join(vol_name);
+            fs::create_dir(&vol_path)?;
+            fs::write(vol_path.join(file_name), content)?;
+
+            volume_infos.push(VolumeInfo {
+                name: vol_name.to_string(),
+                source: vol_path.clone(),
+                destination: vol_path,
+            });
+        }
+
+        Ok((temp_dir, volume_infos))
+    }
+
+    // 测试备份功能
+    #[test]
+    async fn test_backup_items() -> Result<()> {
+        let (temp_dir, volumes) = setup_test_volumes().await?;
+        let output_dir = TempDir::new()?;
+
+        let container_info = ContainerInfo {
+            id: "test_container_id".to_string(),
+            name: "test_container".to_string(),
+            status: "running".to_string(),
+        };
+
+        // 执行备份
+        backup_items(
+            &container_info,
+            output_dir.path().to_path_buf(),
+            volumes.len(),
+            volumes,
+            &[],
+        )?;
+
+        // 验证备份文件是否创建
+        let backup_files: Vec<_> = fs::read_dir(output_dir.path())?
+            .filter_map(|entry| entry.ok())
+            .collect();
+        assert_eq!(backup_files.len(), 1);
+
+        // 验证备份文件是否包含 mapping.toml
+        let backup_file = &backup_files[0].path();
+        let mapping_content = utils::read_file_from_archive(backup_file, MAPPING_FILE_NAME)?;
+        let backup_mapping: BackupMapping = toml::from_str(&mapping_content)?;
+
+        assert_eq!(backup_mapping.container_name, "test_container");
+        assert_eq!(backup_mapping.container_id, "test_container_id");
+        assert_eq!(backup_mapping.volumes.len(), 2);
+
+        Ok(())
+    }
+
+    // 测试恢复功能
+    #[test]
+    async fn test_restore_volumes() -> Result<()> {
+        // 先创建并备份测试数据
+        let (source_temp_dir, volumes) = setup_test_volumes().await?;
+        let backup_dir = TempDir::new()?;
+        let restore_dir = TempDir::new()?;
+
+        let container_info = ContainerInfo {
+            id: "test_container_id".to_string(),
+            name: "test_container".to_string(),
+            status: "running".to_string(),
+        };
+
+        // 执行备份
+        backup_items(
+            &container_info,
+            backup_dir.path().to_path_buf(),
+            volumes.len(),
+            volumes,
+            &[],
+        )?;
+
+        // 获取备份文件路径
+        let backup_file = fs::read_dir(backup_dir.path())?.next().unwrap()?.path();
+
+        // 测试恢复到指定目录
+        restore_volumes(
+            &container_info,
+            &backup_file,
+            Some(restore_dir.path().to_string_lossy().to_string()),
+            false,
+            true,
+        )
+        .await?;
+
+        // 验证恢复的文件
+        assert!(restore_dir.path().join("vol1").join("test1.txt").exists());
+        assert!(restore_dir.path().join("vol2").join("test2.txt").exists());
+
+        // 验证文件内容
+        assert_eq!(
+            fs::read_to_string(restore_dir.path().join("vol1").join("test1.txt"))?,
+            "content1"
+        );
+        assert_eq!(
+            fs::read_to_string(restore_dir.path().join("vol2").join("test2.txt"))?,
+            "content2"
+        );
+
+        Ok(())
+    }
+
+    // 测试容器不匹配的情况
+    #[test]
+    async fn test_restore_container_mismatch() -> Result<()> {
+        let (source_temp_dir, volumes) = setup_test_volumes().await?;
+        let backup_dir = TempDir::new()?;
+
+        // 使用一个容器创建备份
+        let container_info = ContainerInfo {
+            id: "test_container_id".to_string(),
+            name: "test_container".to_string(),
+            status: "running".to_string(),
+        };
+
+        backup_items(
+            &container_info,
+            backup_dir.path().to_path_buf(),
+            volumes.len(),
+            volumes,
+            &[],
+        )?;
+
+        let backup_file = fs::read_dir(backup_dir.path())?.next().unwrap()?.path();
+
+        // 使用不同的容器尝试恢复
+        let different_container = ContainerInfo {
+            id: "different_id".to_string(),
+            name: "different_container".to_string(),
+            status: "running".to_string(),
+        };
+
+        // 应该返回错误
+        let result = restore_volumes(&different_container, &backup_file, None, false, true).await;
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Backup is for container")
+        );
+
+        Ok(())
+    }
+
+    // 测试排除模式
+    #[test]
+    async fn test_backup_with_exclude_patterns() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let base_path = temp_dir.path();
+
+        // 创建测试文件结构
+        fs::create_dir_all(base_path.join("vol1/node_modules"))?;
+        fs::create_dir_all(base_path.join("vol1/.git"))?;
+        fs::write(base_path.join("vol1/test.txt"), "test content")?;
+        fs::write(
+            base_path.join("vol1/node_modules/package.json"),
+            "package content",
+        )?;
+        fs::write(base_path.join("vol1/.git/config"), "git config")?;
+
+        let volumes = vec![VolumeInfo {
+            name: "vol1".to_string(),
+            source: base_path.join("vol1"),
+            destination: base_path.join("vol1"),
+        }];
+
+        let container_info = ContainerInfo {
+            id: "test_container_id".to_string(),
+            name: "test_container".to_string(),
+            status: "running".to_string(),
+        };
+
+        let output_dir = TempDir::new()?;
+
+        // 使用排除模式进行备份
+        backup_items(
+            &container_info,
+            output_dir.path().to_path_buf(),
+            volumes.len(),
+            volumes,
+            &[".git", "node_modules"],
+        )?;
+
+        // 验证备份文件
+        let backup_file = fs::read_dir(output_dir.path())?.next().unwrap()?.path();
+
+        // 创建恢复目录
+        let restore_dir = TempDir::new()?;
+
+        // 恢复备份
+        restore_volumes(
+            &container_info,
+            &backup_file,
+            Some(restore_dir.path().to_string_lossy().to_string()),
+            false,
+            true,
+        )
+        .await?;
+
+        // 验证排除的目录不存在
+        assert!(!restore_dir.path().join("vol1/node_modules").exists());
+        assert!(!restore_dir.path().join("vol1/.git").exists());
+        // 验证正常文件存在
+        assert!(restore_dir.path().join("vol1/test.txt").exists());
+
+        Ok(())
+    }
 }
