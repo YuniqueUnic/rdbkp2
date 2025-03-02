@@ -49,9 +49,9 @@ dev:
     cargo watch -x run
 
 # 创建新的发布版本
-# 用法: just release [major|minor|patch]
-release level:
-    cargo release {{level}} --execute
+# 用法: just release [major|minor|patch] [--execute/留空也是--dry-run]
+release level x="": git-commit
+    cargo release {{level}} --no-publish --no-verify {{x}} -v
 
 
 # 发布到 crates.io
