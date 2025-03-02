@@ -38,7 +38,7 @@ struct Cli {
     restart: bool,
 
     /// 停止容器超时时间 (秒)
-    #[arg(global = true, short, long, default_value = "30")]
+    #[arg(global = true, short, long, default_value = "60")]
     timeout: u64,
 
     /// 排除模式：备份时将排除包含这些模式的文件/目录

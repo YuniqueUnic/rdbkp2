@@ -58,56 +58,70 @@ async fn stop_container_timeout(
     timeout_secs: u64, // 修改为 timeout_secs，更清晰地表明单位是秒
 ) -> Result<()> {
     // 首先尝试停止容器
-    println!("Attempting to stop container {}", container_info.id);
-    debug!("Attempting to stop container {}", container_info.id);
-    client.stop_container(&container_info.id).await?;
+    println!("Attempting to stop container {}", container_info.name);
+    debug!(
+        "Attempting to stop container {} with timeout {}",
+        container_info.id, timeout_secs
+    );
 
     // 然后等待容器完全停止，并添加终端输出反馈
-    let timer_result = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+    let timer_task = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+        client.stop_container(&container_info.id).await?;
+        let mut flag = 0;
         loop {
             match client.get_container_status(&container_info.id).await {
                 Ok(status) => {
                     if status != "running" && status != "restarting" {
-                        info!(
+                        log_print!(
+                            "INFO",
                             "Container {} stopped successfully with status: {}",
-                            container_info.id, status
+                            container_info.name,
+                            status
                         );
                         return Ok(()); // 容器成功停止，返回 Ok
                     } else {
-                        info!(
-                            "Container {} still stopping, current status: {}",
-                            container_info.id, status
-                        ); // 输出反馈信息
+                        if flag == 0 {
+                            log_print!(
+                                "INFO",
+                                "Container {} still stopping, current status: {}",
+                                container_info.name,
+                                status
+                            );
+                        }
+
+                        log_print!("DEBUG", ".");
+                        flag = 1;
                     }
                 }
                 Err(e) => {
-                    error!(
+                    log_bail!(
+                        "ERROR",
                         "Failed to get container status for container {}: {}",
-                        container_info.id, e
+                        container_info.name,
+                        e
                     );
-                    return Err(anyhow::anyhow!("Failed to get container status: {}", e)); // 获取状态失败，返回 Err
+                    // 获取状态失败，返回 Err
                 }
-            };
+            }
+
             tokio::time::sleep(Duration::from_secs(1)).await; // 每秒检查一次状态
         }
     })
     .await;
 
     // 处理超时情况和结果
-    match timer_result {
-        Ok(result) => result
-            .map_err(|e| anyhow::anyhow!("Failed to stop container {}: {}", container_info.id, e)),
+    match timer_task {
+        Ok(result) => result.map_err(|e| {
+            anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
+        }),
         Err(_timeout_err) => {
             // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
-            error!(
+            log_bail!(
+                "ERROR",
                 "Timeout while waiting for container {} to stop after {} seconds",
-                container_info.id, timeout_secs
-            );
-            Err(anyhow::anyhow!(
-                "Timeout while waiting for container {} to stop after {} seconds",
-                container_info.id,
+                container_info.name,
                 timeout_secs
-            ))
+            );
         }
     }
 }
@@ -234,6 +248,22 @@ fn backup_items(
     selected_volumes: Vec<VolumeInfo>,
     exclude_patterns: &[&str],
 ) -> Result<()> {
+    let selected_volumes = selected_volumes
+        .into_iter()
+        .filter(|v| {
+            !exclude_patterns
+                .iter()
+                .any(|p| v.source.to_string_lossy().contains(p))
+        })
+        .collect::<Vec<_>>();
+
+    // 如果备份卷为空，则直接返回
+    if selected_volumes.is_empty() {
+        log_bail!("ERROR", "No volumes for backup, please check your input");
+    }
+
+    // 如果备份卷为空，则直接返回
+    // 创建备份映射
     // 创建备份映射
     let backup_mapping = BackupMapping {
         container_name: container_info.name.clone(),

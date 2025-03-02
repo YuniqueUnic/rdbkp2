@@ -122,9 +122,19 @@ fn append_items<P: AsRef<Path>>(
             }
         }
     } else if source.is_file() {
+        // 如果文件名包含排除模式，则不添加到压缩包中
+        if exclude_patterns
+            .iter()
+            .any(|p| source.to_string_lossy().contains(p))
+        {
+            debug!(path = ?source, "Excluding file");
+            return Ok(items_count);
+        }
+
         let name = source
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("Failed to get file name"))?;
+
         debug!(path = ?source, name = ?name, "Adding file to archive");
         tar.append_path_with_name(source, name)?;
         items_count += 1;

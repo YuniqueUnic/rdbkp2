@@ -132,7 +132,7 @@ tls = false
 | `-y, --yes`         | 自动确认                | `false`                        |
 | `-i, --interactive` | 使用交互式模式          | `true`                         |
 | `-v, --verbose`     | 显示详细日志            | `false`                        |
-| `-t, --timeout`     | 停止容器超时时间 (秒)   | `30`                           |
+| `-t, --timeout`     | 停止容器超时时间 (秒)   | `60`                           |
 | `-e, --exclude`     | 排除模式                | `".git,node_modules,target"`   |
 | `-r, --restart`     | 操作后重启容器          | `false`                        |
 
