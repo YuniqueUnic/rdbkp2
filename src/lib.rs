@@ -36,6 +36,12 @@ struct Cli {
     /// 停止容器超时时间 (秒)
     #[arg(short, long, default_value = "30")]
     timeout: u64,
+
+    /// 排除模式
+    ///
+    /// 备份时将排除包含这些模式的文件/目录
+    #[arg(short, long, default_value = ".git,node_modules,target")]
+    exclude: String,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -161,6 +167,8 @@ pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let timeout = cli.timeout;
     let restart = cli.restart;
+    let exclude = cli.exclude;
+    let exclude_patterns = exclude.split(',').collect::<Vec<&str>>();
 
     // 根据子命令执行相应的操作
     match cli.command {
@@ -177,7 +185,16 @@ pub async fn run() -> Result<()> {
                 interactive,
                 "Executing backup command"
             );
-            commands::backup(container, file, output, restart, interactive, timeout).await?;
+            commands::backup(
+                container,
+                file,
+                output,
+                restart,
+                interactive,
+                timeout,
+                &exclude_patterns,
+            )
+            .await?;
         }
         Commands::Restore {
             container,

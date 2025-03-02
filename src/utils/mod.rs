@@ -7,11 +7,11 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
-/// 压缩目录/文件，并在压缩包中添加额外的内存文件
+/// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
 /// # Arguments
 ///
-/// * `source` - 要压缩的源目录或文件路径
+/// * `sources` - 要压缩的源目录或文件路径 (列表)
 /// * `output_file` - 压缩后的输出文件路径
 /// * `memory_files` - 要添加到压缩包中的额外的内存文件列表，每个元素是一个元组 (文件名，文件内容)
 /// * `exclude_patterns` - 要排除的文件/目录模式列表，为空则不排除
@@ -31,18 +31,21 @@ use xz2::write::XzEncoder;
 /// compress_with_memory_file(source, output, &memory_files, &excludes)?;
 /// ```
 pub fn compress_with_memory_file<P: AsRef<Path>>(
-    source: P,
+    sources: &[P],
     output_file: P,
     memory_files: &[(&str, &str)],
     exclude_patterns: &[&str],
 ) -> Result<()> {
-    let source = source.as_ref();
     let output_file = output_file.as_ref();
 
+    let sources_item = sources
+        .iter()
+        .map(|s| s.as_ref().to_string_lossy())
+        .collect::<Vec<_>>();
     info!(
-        source = ?source,
+        sources = ?sources_item,
         output_file = ?output_file,
-        "Starting directory compression"
+        "Starting items compression"
     );
 
     let file = File::create(output_file).map_err(|e| {
@@ -59,8 +62,11 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
     // 首先添加内存中的文件
     items_count += append_memory_files(memory_files, &mut tar)?;
 
-    // 然后添加源目录/文件
-    items_count += append_items(source, exclude_patterns, &mut tar)?;
+    // 处理每个源目录/文件
+    for source in sources {
+        // 然后添加源目录/文件
+        items_count += append_items(source, exclude_patterns, &mut tar)?;
+    }
 
     debug!("Finalizing archive");
     tar.finish().map_err(|e| {
@@ -70,9 +76,9 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
 
     info!(
         items_count,
-        source_dir = ?source,
+        sources = ?sources_item,
         output_file = ?output_file,
-        "Directory compression completed successfully"
+        "Items compression completed successfully"
     );
 
     Ok(())
@@ -184,7 +190,7 @@ pub fn read_file_from_archive<P: AsRef<Path>>(archive_path: P, file_name: &str) 
 
     for entry in archive.entries()? {
         let mut entry = entry?;
-        if entry.path()?.display().to_string() == file_name {
+        if entry.path()?.to_string_lossy() == file_name {
             let mut content = String::new();
             entry.read_to_string(&mut content)?;
             return Ok(content);
@@ -375,7 +381,7 @@ mod tests {
 
         // 压缩
         let archive = temp.child("archive.tar.xz");
-        compress_with_memory_file(&source_dir, &archive, &[], &[])?;
+        compress_with_memory_file(&[&source_dir], &archive, &[], &[])?;
         archive.assert(predicate::path::exists());
 
         // 解压
@@ -404,7 +410,7 @@ mod tests {
         file.write_str(content)?;
 
         let archive_path = temp.child("archive.tar.xz");
-        compress_with_memory_file(&source, &archive_path, &[], &[])?;
+        compress_with_memory_file(&[&source], &archive_path, &[], &[])?;
         extract_archive(&archive_path, &extract)?;
         assert_content_match(&file, &extract.child(file.file_name().unwrap()))?;
 
@@ -419,7 +425,7 @@ mod tests {
         // 创建一个包含内存文件的压缩包
         let test_content = "Hello from memory file!";
         let memory_files = vec![("test.txt", test_content)];
-        compress_with_memory_file(temp.path(), &archive, &memory_files, &[])?;
+        compress_with_memory_file(&[temp.path()], &archive, &memory_files, &[])?;
 
         // 从压缩包中读取文件
         let content = read_file_from_archive(&archive, "test.txt")?;
@@ -448,7 +454,7 @@ mod tests {
             ("memory1.txt", "Memory file 1 content"),
             ("memory2.txt", "Memory file 2 content"),
         ];
-        compress_with_memory_file(&source_dir, &archive, &memory_files, &[])?;
+        compress_with_memory_file(&[&source_dir], &archive, &memory_files, &[])?;
 
         // 验证压缩包内容
         let extract_dir = temp.child("extract");

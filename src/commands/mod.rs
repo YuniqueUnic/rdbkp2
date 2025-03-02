@@ -1,9 +1,13 @@
+mod prompt;
+
 use crate::config::Config;
 use crate::docker::{BackupMapping, ContainerInfo, DockerClient, VolumeInfo};
 use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, extract_archive};
+use prompt::*;
+
 use anyhow::Result;
 use chrono::Local;
-use dialoguer::{Confirm, Input, MultiSelect, Select};
+use dialoguer::{Confirm, Input, Select};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use toml;
@@ -18,6 +22,8 @@ macro_rules! prompt_select {
         )
     };
 }
+
+const MAPPING_FILE_NAME: &str = "mapping.toml";
 
 pub async fn list_containers() -> Result<()> {
     debug!("Initializing Docker client for container listing");
@@ -43,6 +49,7 @@ pub async fn list_containers() -> Result<()> {
     );
     Ok(())
 }
+
 async fn stop_container_timeout(
     client: &DockerClient,
     container_info: &ContainerInfo,
@@ -110,6 +117,7 @@ pub async fn backup(
     restart: bool,
     interactive: bool,
     timeout: u64,
+    exclude_patterns: &[&str],
 ) -> Result<()> {
     info!(
         ?container,
@@ -121,25 +129,75 @@ pub async fn backup(
     );
 
     let client = DockerClient::new().await?;
-    let config = Config::global()?;
 
     // 获取容器信息
     debug!("Getting container information");
     let container_info = if interactive || container.is_none() {
-        select_container(&client).await?
+        prompt::select_container_prompt(&client).await?
     } else {
         get_container_by_name_or_id(&client, &container.unwrap()).await?
     };
 
     // 获取输出目录
+    let output_dir = parse_output_dir(output, interactive, &container_info)?;
+
+    // 如果容器正在运行或重启中，则停止容器
+    stop_container_timeout(&client, &container_info, timeout).await?;
+
+    // 如果设置了数据路径，则将只备份该路径下的数据
+    let (total_volumes, selected_volumes) =
+        select_volumes(file, interactive, &client, &container_info).await?;
+
+    // 排除模式 (从命令行参数获取，默认值为 ".git,node_modules,target")
+    // let exclude_patterns = &[".git", "node_modules", "target"];
+
+    // 备份卷 (s)
+    backup_items(
+        &container_info,
+        output_dir,
+        total_volumes,
+        selected_volumes,
+        exclude_patterns,
+    )?;
+
+    // 如果需要重启容器，则重启容器
+    if restart {
+        info!(
+            container_name = ?container_info.name,
+            "Restarting container"
+        );
+        client.restart_container(&container_info.id).await?;
+        info!(
+            container_name = ?container_info.name,
+            "Container restarted"
+        );
+    }
+
+    Ok(())
+}
+
+fn parse_output_dir(
+    output: Option<String>,
+    interactive: bool,
+    container_info: &ContainerInfo,
+) -> Result<PathBuf> {
+    let config = Config::global()?;
+
+    // 获取输出目录
     debug!(container_name = ?container_info.name, "Getting output directory");
     let output_dir = if interactive || output.is_none() {
-        let default_dir = config.backup_dir.to_string_lossy();
+        let default_dir = if let Some(output) = output {
+            output
+        } else {
+            config.backup_dir.to_string_lossy().to_string()
+        };
+
         let input: String = Input::new()
             .with_prompt("Backup output directory")
-            .default(default_dir.to_string())
+            .default(default_dir)
             .allow_empty(false)
             .interact_text()?;
+
         PathBuf::from(input)
     } else {
         match output {
@@ -147,7 +205,7 @@ pub async fn backup(
             None => {
                 error!("Output directory is required");
                 println!("Output directory is required");
-                return Ok(());
+                anyhow::bail!("Output directory is required");
             }
         }
     };
@@ -155,21 +213,86 @@ pub async fn backup(
     // 确保输出目录存在
     debug!(?output_dir, "Ensuring output directory exists");
     ensure_dir_exists(&output_dir)?;
+    Ok(output_dir)
+}
 
-    // 如果容器正在运行或重启中，则停止容器
-    stop_container_timeout(&client, &container_info, timeout).await?;
+fn backup_items(
+    container_info: &ContainerInfo,
+    output_dir: PathBuf,
+    total_volumes_count: usize,
+    selected_volumes: Vec<VolumeInfo>,
+    exclude_patterns: &[&str],
+) -> Result<()> {
+    // 创建备份映射
+    let backup_mapping = BackupMapping {
+        container_name: container_info.name.clone(),
+        container_id: container_info.id.clone(),
+        volumes: selected_volumes.clone(),
+        backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    let mapping_content = toml::to_string(&backup_mapping)?;
 
-    // 如果设置了数据路径，则将只备份该路径下的数据
+    // 创建内存文件
+    let memory_files = vec![(MAPPING_FILE_NAME, mapping_content.as_str())];
+
+    // 创建备份文件名
+    let middle_name = if total_volumes_count > selected_volumes.len() {
+        "all"
+    } else {
+        "partial"
+    };
+    let backup_filename = create_timestamp_filename(
+        &format!("{}_{}", container_info.name, middle_name),
+        ".tar.xz",
+    );
+
+    // 创建备份路径
+    let backup_path = output_dir.join(&backup_filename);
+
+    // 获取卷源路径
+    let volumes_source = selected_volumes
+        .iter()
+        .map(|v| v.source.as_path())
+        .collect::<Vec<_>>();
+
+    // 压缩卷目录
+    utils::compress_with_memory_file(
+        &volumes_source,
+        &backup_path,
+        &memory_files,
+        exclude_patterns,
+    )?;
+
+    // 备份完成
+    info!(
+        backup_file = ?backup_path,
+        "All volumes backup completed successfully"
+    );
+    println!("All volumes backup completed: {}", backup_path.display());
+    Ok(())
+}
+
+async fn select_volumes(
+    file: Option<String>,
+    interactive: bool,
+    client: &DockerClient,
+    container_info: &ContainerInfo,
+) -> Result<(usize, Vec<VolumeInfo>)> {
+    #[allow(unused_assignments)]
+    let total_volumes: usize;
     #[allow(unused_assignments)]
     let mut selected_volumes = Vec::new();
+
     if let Some(file) = file {
         let file = PathBuf::from(file);
         if !file.exists() {
             error!("File does not exist: {}", file.display());
             println!("File does not exist: {}", file.display());
-            return Ok(());
+            anyhow::bail!("File does not exist: {}", file.display());
         }
 
+        total_volumes = 1;
         // 获取卷信息
         selected_volumes = vec![VolumeInfo {
             source: file.clone(),
@@ -187,71 +310,26 @@ pub async fn backup(
         if volumes.is_empty() {
             warn!(container_name = ?container_info.name, "No volumes found for container");
             println!("No volumes found for container {}", container_info.name);
-            return Ok(());
+            anyhow::bail!("No volumes found for container {}", container_info.name);
         }
 
         // 选择要备份的卷
         debug!(volume_count = volumes.len(), "Selecting volumes to backup");
+        total_volumes = volumes.len();
         selected_volumes = if interactive {
-            select_volumes(&volumes)?
+            select_volumes_prompt(&volumes)?
         } else {
             volumes
         };
     }
 
-    // Create backup mapping
-    let backup_mapping = BackupMapping {
-        container_name: container_info.name.clone(),
-        container_id: container_info.id.clone(),
-        volumes: selected_volumes.clone(),
-        backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-
-    // Convert mapping to TOML
-    let mapping_content = toml::to_string(&backup_mapping)?;
-
-    // Create backup for each volume and include mapping
-    for volume in selected_volumes {
-        let backup_filename = create_timestamp_filename(
-            &format!("{}_{}", container_info.name, volume.name),
-            ".tar.xz",
-        );
-        let backup_path = output_dir.join(&backup_filename);
-
-        // Compress volume directory with mapping file
-        utils::compress_with_memory_file(
-            &volume.source,
-            &backup_path,
-            &[("mapping.toml", &mapping_content)],
-            &[".git", "node_modules", "target"],
-        )?;
-
-        info!(
-            backup_file = ?backup_path,
-            "Volume backup completed successfully"
-        );
-        println!("Backup completed: {}", backup_path.display());
+    if selected_volumes.is_empty() {
+        error!("No volumes selected for backup");
+        println!("No volumes selected for backup");
+        anyhow::bail!("No volumes selected for backup");
     }
 
-    info!(
-        container_name = ?container_info.name,
-        "Backup operation completed successfully"
-    );
-
-    if restart {
-        info!(
-            container_name = ?container_info.name,
-            "Restarting container"
-        );
-        client.restart_container(&container_info.id).await?;
-        info!(
-            container_name = ?container_info.name,
-            "Container restarted"
-        );
-    }
-
-    Ok(())
+    Ok((total_volumes, selected_volumes))
 }
 
 // TODO
@@ -277,7 +355,7 @@ pub async fn restore(
     // 获取容器信息
     debug!("Getting container information");
     let container_info = if interactive || container.is_none() {
-        select_container(&client).await?
+        prompt::select_container_prompt(&client).await?
     } else {
         get_container_by_name_or_id(&client, &container.unwrap()).await?
     };
@@ -351,7 +429,12 @@ pub async fn restore(
         // Use the first volume's source path from mapping
         let user_input = Input::new()
             .with_prompt("Restore output directory")
-            .default(backup_mapping.volumes[0].source.display().to_string())
+            .default(
+                backup_mapping.volumes[0]
+                    .source
+                    .to_string_lossy()
+                    .to_string(),
+            )
             .allow_empty(false)
             .interact_text()?;
         PathBuf::from(user_input)
@@ -400,70 +483,6 @@ pub async fn restore(
     }
 
     Ok(())
-}
-
-async fn select_container(client: &DockerClient) -> Result<ContainerInfo> {
-    debug!("Getting container list for selection");
-    let containers = client.list_containers().await?;
-    let container_names: Vec<&String> = containers.iter().map(|c| &c.name).collect();
-
-    debug!("Displaying container selection prompt");
-    let selection = Select::new()
-        .with_prompt(prompt_select!("Select one container"))
-        .items(&container_names)
-        .default(0)
-        .interact()?;
-
-    let selected = containers[selection].clone();
-    info!(
-        container_name = ?selected.name,
-        container_id = ?selected.id,
-        "Container selected"
-    );
-    Ok(selected)
-}
-
-fn select_volumes(volumes: &[VolumeInfo]) -> Result<Vec<VolumeInfo>> {
-    debug!(volume_count = volumes.len(), "Preparing volume selection");
-    let volume_names: Vec<String> = volumes
-        .iter()
-        .map(|v| format!("{} -> {}", v.source.display(), v.destination.display()))
-        .collect();
-
-    debug!("Displaying volume selection prompt");
-
-    let selections = MultiSelect::new()
-        .with_prompt(prompt_select!("Select one or more volumes"))
-        .items(&volume_names)
-        .defaults(&[true])
-        .interact()?;
-
-    let selected: Vec<VolumeInfo> = selections.iter().map(|i| volumes[*i].clone()).collect();
-    info!(
-        selected_volumes = ?selected.iter().map(|v| &v.name).collect::<Vec<_>>(),
-        "Volumes selected"
-    );
-    Ok(selected)
-}
-
-fn select_volume(volumes: &[VolumeInfo]) -> Result<VolumeInfo> {
-    let volume_names: Vec<String> = volumes
-        .iter()
-        .map(|v| format!("{} -> {}", v.source.display(), v.destination.display()))
-        .collect();
-
-    let selection = Select::new()
-        .with_prompt(prompt_select!("Select one volume"))
-        .items(&volume_names)
-        .default(0)
-        .interact()?;
-
-    let selected = volumes[selection].clone();
-    info!(
-        selected_volume = ?selected.name,
-        "Volume selected"
-    );
-    Ok(selected)
 }
 
 async fn get_container_by_name_or_id(
@@ -517,7 +536,7 @@ async fn backup_volume(
 
     // 压缩卷目录
     utils::compress_with_memory_file(
-        &volume.source,
+        &[&volume.source],
         &backup_path,
         &[("mapping.toml", &mapping_content)],
         &[".git", "node_modules", "target"],
