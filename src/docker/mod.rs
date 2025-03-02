@@ -216,6 +216,7 @@ pub struct VolumeInfo {
 }
 
 #[cfg(test)]
+#[ignore = "This test needs a really docker environment, manual test is recommended"]
 mod tests {
     use super::*;
     use crate::{
@@ -241,7 +242,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_get_container_volumes() -> Result<()> {
         crate::init_test_log();
 
