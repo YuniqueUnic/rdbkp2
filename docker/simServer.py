@@ -89,6 +89,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.log_request_to_file()
 
 def run_server():
+    print("Starting server...")
+    cwd = os.getcwd()
+    print("Current working directory: ", cwd)
     config = ServerConfig()
     server_address = ('', config.port)
     httpd = HTTPServer(server_address, RequestHandler)

@@ -22,7 +22,7 @@ use tracing::{debug, error, info, warn};
 macro_rules! prompt_select {
     ($prompt_str:expr) => {
         format!(
-            "[💡 use arrow keys to move, press [enter] to select]\r\n{}",
+            "[💡 use arrow keys to move ↑↓]\r\n[✅ type space to (un)select √×]\r\n[👌 then press [enter] to confirm]\r\n{}",
             $prompt_str
         )
     };

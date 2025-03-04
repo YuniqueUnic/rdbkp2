@@ -292,6 +292,7 @@ mod tests {
     use assert_fs::TempDir;
 
     #[test]
+    #[allow(deprecated)]
     fn test_config_singleton() -> Result<()> {
         // 创建测试配置
         let test_config = Config::default();
@@ -317,6 +318,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_config_file_operations() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let config_path = temp_dir.path().join("config.toml");

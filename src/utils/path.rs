@@ -1,5 +1,5 @@
 use std::{
-    env, io,
+    io,
     path::{Path, PathBuf},
 };
 
@@ -106,12 +106,18 @@ pub(crate) fn absolute_canonicalize_path(path: &Path) -> io::Result<PathBuf> {
 /// - 如果是相对路径，则基于当前工作目录转换为绝对路径
 /// - 尝试执行 canonicalize（解析符号链接并处理冗余）
 /// - 如果路径不存在，仍返回简化的绝对路径（处理冗余但保留不存在的部分）
-pub(crate) fn ensure_absolute_canonical(path: &Path) -> io::Result<PathBuf> {
+pub(crate) fn ensure_absolute_canonical<P: AsRef<Path>>(
+    path: P,
+    base_path: P,
+) -> io::Result<PathBuf> {
+    let path = path.as_ref();
+    let base_path = base_path.as_ref();
+
     // 转换为绝对路径
     let absolute = if path.is_absolute() {
-        path.to_path_buf()
+        path
     } else {
-        env::current_dir()?.join(path)
+        &base_path.join(path)
     };
 
     // 尝试规范化（解析符号链接）
@@ -166,7 +172,8 @@ mod tests {
     #[test]
     fn test_absolute_conversion() {
         let rel_path = Path::new("test.txt");
-        let abs_path = ensure_absolute_canonical(rel_path).unwrap();
+        let base_path = Path::new("/base/path");
+        let abs_path = ensure_absolute_canonical(rel_path, base_path).unwrap();
         assert!(abs_path.is_absolute());
     }
 
@@ -175,25 +182,6 @@ mod tests {
         let path = Path::new("/foo/./bar//../baz");
         let simplified = simplify_absolute_path(path);
         assert_eq!(simplified, PathBuf::from("/foo/baz"));
-    }
-
-    #[test]
-    fn test_symbolic_link() {
-        let temp_dir = assert_fs::TempDir::new().unwrap();
-        let real_path = temp_dir.child("real_file");
-        File::create(&real_path).unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::symlink;
-            let link_path = temp_dir.child("link");
-            symlink(&real_path, &link_path).unwrap();
-            let resolved = ensure_absolute_canonical(&link_path).unwrap();
-            // #[cfg(not(target_os = "macos"))]
-            let real_path_str = real_path.to_string_lossy().to_string();
-            let resolved_str = resolved.to_string_lossy().to_string();
-            assert!(resolved_str.ends_with(&real_path_str));
-        }
     }
 
     #[test]

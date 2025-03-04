@@ -34,8 +34,8 @@ test:
     cargo test --all-features
 
 # 构建发布版本
-build:
-    cargo build --release
+build arg="":
+    cargo build {{arg}}
 
 # 运行所有检查（格式、lint、测试）
 check: fmt lint test
