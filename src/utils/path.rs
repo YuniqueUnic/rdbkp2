@@ -172,7 +172,10 @@ mod tests {
     #[test]
     fn test_absolute_conversion() {
         let rel_path = Path::new("test.txt");
+        #[cfg(not(target_os = "windows"))]
         let base_path = Path::new("/base/path");
+        #[cfg(target_os = "windows")]
+        let base_path = Path::new(r#"C:\base\path"#);
         let abs_path = ensure_absolute_canonical(rel_path, base_path).unwrap();
         assert!(abs_path.is_absolute());
     }
