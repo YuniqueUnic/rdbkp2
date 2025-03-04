@@ -22,8 +22,12 @@ use tracing::{debug, error, info, warn};
 macro_rules! prompt_select {
     ($prompt_str:expr) => {
         format!(
-            "[💡 use arrow keys to move ↑↓]\r\n[✅ type space to (un)select √×]\r\n[👌 then press [enter] to confirm]\r\n{}",
-            $prompt_str
+            "💡 Press [arrow] keys to move  [↑↓]\n\
+             ✅   -   [space] to select     [√×]\n\
+             👌   -   [enter] to confirm    [EN]\n\
+             \n\
+             {}",
+            $prompt_str,
         )
     };
 }
@@ -38,12 +42,12 @@ pub async fn list_containers() -> Result<()> {
     let containers = client.list_containers().await?;
 
     println!("\nAvailable containers:");
-    println!("{:<20} {:<40} {:<20}", "NAME", "ID", "STATUS");
-    println!("{:-<80}", "");
+    println!("{:<20} {:<24} {:<20}", "NAME", "ID", "STATUS");
+    println!("{:-<64}", "");
 
     for container in &containers {
         println!(
-            "{:<20} {:<40} {:<20}",
+            "{:<20} {:<24} {:<20}",
             container.name, container.id, container.status
         );
     }
@@ -124,16 +128,16 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
         }
         timer_res = timer_task => {
             println!();
-            // 处理超时情况和结果
+    // 处理超时情况和结果
             match timer_res {
                 Ok(result) => result.map_err(|e| {
                     anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
                 }),
-                Err(_timeout_err) => {
-                    // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+        Err(_timeout_err) => {
+            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
                     log_bail!(
                         "ERROR",
-                        "Timeout while waiting for container {} to stop after {} seconds",
+                "Timeout while waiting for container {} to stop after {} seconds",
                         container_info.name,
                         stop_timeout_secs
                     );
@@ -501,7 +505,7 @@ async fn restore_volumes(
     if !yes && interactive {
         let confirmed = Confirm::new()
             .with_prompt(format!(
-                "❓ Are you sure you want to restore to original paths?\n{}",
+                "❓ Are you sure you want to restore to original paths?\n{}\n",
                 backup_mapping
                     .volumes
                     .iter()
@@ -519,10 +523,13 @@ async fn restore_volumes(
     }
 
     // 测试时，不停止容器 (不一定存在 Docker 环境)
+    // 使用 Mock Docker 解决了测试问题
     // 如果容器正在运行或重启中，则停止容器
     stop_container_timeout(&container_info).await?;
 
     // 开始解压
+    // TODO: Docker volumes 需要 sudo/管理员权限才能修改
+    // 需要做一个提权的功能，然后再去解压和覆盖还原备份文件
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
 }
@@ -631,69 +638,100 @@ fn parse_restore_file(
     let config = Config::global()?;
     debug!(container_name = ?container_info.name, "Getting backup file path");
 
-    // 如果提供了输入路径，处理输入路径，直接返回
-    if let Some(input) = input {
-        let file = PathBuf::from(input);
-        let file = utils::ensure_file_exists(&file)?;
-        // 将文件路径转换为绝对路径
-        let file = utils::absolute_canonicalize_path(&file)?;
-        return Ok(file);
-    }
+    // Helper function to validate and convert path
+    fn try_get_backup_file(path: &PathBuf, container_name: &str) -> Result<Option<PathBuf>> {
+        if path.is_file() {
+            let file = utils::ensure_file_exists(path)?;
+            Ok(Some(utils::absolute_canonicalize_path(&file)?))
+        } else if path.is_dir() {
+            let mut files = utils::get_files_start_with(path, container_name, true)?;
 
-    // 从备份目录查找文件
-    let files = utils::get_files_start_with(&config.backup_dir, &container_info.name, true)?;
+            match files.len() {
+                0 => Ok(None),
+                1 => Ok(Some(utils::absolute_canonicalize_path(&files[0])?)),
+                _ => {
+                    // 使用文件的创建时间进行排序
+                    files.sort_by(|a, b| {
+                        let get_created_time = |p: &PathBuf| {
+                            std::fs::metadata(p)
+                                .and_then(|m| m.created())
+                                .unwrap_or_else(|_| std::time::SystemTime::UNIX_EPOCH)
+                        };
 
-    // 如果找不到备份文件，则提示用户输入备份文件路径
-    if files.is_empty() {
-        log_println!(
-            "WARN",
-            "❌ No backup files found for container {}",
-            container_info.name
-        );
-        let input = Input::new()
-            .with_prompt("Please input the backup file path")
-            .allow_empty(false)
-            .validate_with(|input: &String| -> anyhow::Result<()> {
-                let file = PathBuf::from(input);
-                if !file.exists() {
-                    Err(anyhow::anyhow!(
-                        "File does not exist: {}",
-                        file.to_string_lossy()
-                    ))
-                } else {
-                    Ok(())
+                        // 反向比较以获得降序排序（最新的在前）
+                        get_created_time(b).cmp(&get_created_time(a))
+                    });
+
+                    let selection = Select::new()
+                        .with_prompt(prompt_select!("Select a backup file to restore:"))
+                        .items(
+                            &files
+                                .iter()
+                                .map(|f| {
+                                    format!(
+                                        "[{:19}] {:45}", // 调整缩进和宽度
+                                        utils::format_file_time(f)
+                                            .unwrap_or_else(|_| "Unknown time".to_string()),
+                                        f.file_name().unwrap_or_default().to_string_lossy(),
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                        .default(0)
+                        .interact()?;
+                    Ok(Some(utils::absolute_canonicalize_path(&files[selection])?))
                 }
-            })
-            .with_initial_text(config.backup_dir.to_string_lossy().to_string())
-            .interact_text()?;
-        let file = PathBuf::from(input);
-        let file = utils::ensure_file_exists(&file)?;
+            }
+        } else {
+            Ok(None)
+        }
+    }
 
-        // 将文件路径转换为绝对路径
-        let file = utils::absolute_canonicalize_path(&file)?;
+    // 1. Try user input path first
+    if let Some(input) = input {
+        let input_path = PathBuf::from(input);
+        if let Some(file) = try_get_backup_file(&input_path, &container_info.name)? {
+            return Ok(file);
+        }
+    }
+
+    // 2 & 3. Try default backup directory
+    if let Some(file) = try_get_backup_file(&config.backup_dir, &container_info.name)? {
         return Ok(file);
     }
 
-    // 如果只有一个文件或需要选择
-    let file = if files.len() == 1 {
-        files[0].clone()
-    } else {
-        let selection = Select::new()
-            .with_prompt(prompt_select!("Select one file to restore"))
-            .items(
-                &files
-                    .iter()
-                    .map(|f| f.to_string_lossy())
-                    .collect::<Vec<_>>(),
-            )
-            .default(0)
-            .interact()?;
-        files[selection].clone()
-    };
+    // 4. Prompt user for input and try again
+    log_println!(
+        "WARN",
+        "❌ No backup files found for container {}",
+        container_info.name
+    );
 
-    // 将文件路径转换为绝对路径
-    let file = utils::absolute_canonicalize_path(&file)?;
-    Ok(file)
+    let input = Input::new()
+        .with_prompt("Please input the backup file path")
+        .allow_empty(false)
+        .validate_with(|input: &String| -> Result<()> {
+            let path = PathBuf::from(input);
+            if !path.exists() {
+                Err(anyhow::anyhow!("Path does not exist: {}", path.display()))
+            } else {
+                Ok(())
+            }
+        })
+        .with_initial_text(config.backup_dir.to_string_lossy().to_string())
+        .interact_text()?;
+
+    let input_path = PathBuf::from(input);
+    if let Some(file) = try_get_backup_file(&input_path, &container_info.name)? {
+        return Ok(file);
+    }
+
+    // 5. If all attempts fail, return error
+    log_bail!(
+        "ERROR",
+        "Could not find valid backup file for container {}",
+        container_info.name
+    )
 }
 
 async fn get_container_by_name_or_id<T: DockerClientInterface>(

@@ -50,10 +50,10 @@ dev:
 
 # 创建新的发布版本
 # 用法: just release [major|minor|patch] [--execute/留空也是--dry-run]
-release level x="": git-commit
+release level x="": fmt git-commit
     cargo release {{level}} --no-publish --no-verify {{x}} -v
 
-release-only level x="":
+release-only level x="": fmt
     cargo release {{level}} --no-publish --no-verify {{x}} -v
 
 

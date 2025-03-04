@@ -241,6 +241,14 @@ pub fn create_timestamp_filename(prefix: &str, ext: &str) -> String {
     filename
 }
 
+pub fn format_file_time(path: &PathBuf) -> Result<String> {
+    let metadata = std::fs::metadata(path)?;
+    let created = metadata.created()?;
+    let datetime = chrono::DateTime::<chrono::Local>::from(created);
+    debug!(?path, "format file time");
+    Ok(datetime.format("%Y-%m-%d %H:%M:%S").to_string())
+}
+
 /// 获取指定路径下以指定前缀开头的文件列表 (递归或非递归)
 ///
 /// # Arguments
