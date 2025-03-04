@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 class ServerConfig:
-    def __init__(self, config_path='config.ini'):
+    def __init__(self, config_path='./config/config.ini'):
         self.config = self._load_config(config_path)
     
     def _load_config(self, config_path):

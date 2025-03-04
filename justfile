@@ -34,8 +34,8 @@ test:
     cargo test --all-features
 
 # 构建发布版本
-build:
-    cargo build --release
+build arg="":
+    cargo build {{arg}}
 
 # 运行所有检查（格式、lint、测试）
 check: fmt lint test
@@ -50,10 +50,10 @@ dev:
 
 # 创建新的发布版本
 # 用法: just release [major|minor|patch] [--execute/留空也是--dry-run]
-release level x="": git-commit
+release level x="": fmt git-commit
     cargo release {{level}} --no-publish --no-verify {{x}} -v
 
-release-only level x="":
+release-only level x="": fmt
     cargo release {{level}} --no-publish --no-verify {{x}} -v
 
 

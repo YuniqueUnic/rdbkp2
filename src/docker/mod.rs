@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bollard::{
     Docker,
     container::{InspectContainerOptions, ListContainersOptions},
@@ -23,6 +23,7 @@ pub trait DockerClientInterface: Send + Sync + Clone + 'static {
     async fn start_container(&self, container_id: &str) -> Result<()>;
     async fn restart_container(&self, container_id: &str) -> Result<()>;
     async fn stop_container(&self, container_id: &str) -> Result<()>;
+    async fn get_container_working_dir(&self, id: &str) -> Result<String>;
     async fn get_container_status(&self, id: &str) -> Result<String>;
     fn get_stop_timeout_secs(&self) -> u64;
 }
@@ -39,50 +40,6 @@ impl Clone for MockDockerClientInterface {
         client
     }
 }
-
-// #[cfg(test)]
-// impl MockDockerClientInterface {
-//     pub fn new_default(
-//         container_count: usize,
-//         volume_count: usize,
-//         stop_timeout_secs: u64,
-//     ) -> Self {
-//         let mut client = MockDockerClientInterface::new();
-
-//         let containers = (0..container_count)
-//             .map(|i| ContainerInfo {
-//                 id: format!("container{}", i),
-//                 name: format!("test-container{}", i),
-//                 status: "running".to_string(),
-//             })
-//             .collect::<Vec<_>>();
-
-//         let volumes = (0..volume_count)
-//             .map(|i| VolumeInfo {
-//                 name: format!("volume{}", i),
-//                 source: PathBuf::from(format!("/host/path{}", i)),
-//                 destination: PathBuf::from(format!("/container/path{}", i)),
-//             })
-//             .collect::<Vec<_>>();
-
-//         client
-//             .expect_list_containers()
-//             .returning(move || Ok(containers.clone()));
-//         client
-//             .expect_get_container_volumes()
-//             .returning(move |_| Ok(volumes.clone()));
-//         client.expect_start_container().returning(|_| Ok(()));
-//         client.expect_restart_container().returning(|_| Ok(()));
-//         client.expect_stop_container().returning(|_| Ok(()));
-//         client
-//             .expect_get_container_status()
-//             .returning(|_| Ok("exited".to_string()));
-//         client
-//             .expect_get_stop_timeout_secs()
-//             .returning(move || stop_timeout_secs);
-//         client
-//     }
-// }
 
 // 使用别名，方便在 #[cfg(test)] 环境下替换为 Mock 类型
 #[cfg(not(test))]
@@ -123,7 +80,7 @@ impl DockerClient {
 
     /// Initialize a mock Docker client for testing
     #[cfg(test)]
-    pub fn init(stop_timeout_secs: u64) -> Result<()> {
+    pub fn init(_stop_timeout_secs: u64) -> Result<()> {
         let client = MockDockerClientInterface::new();
         let arc = Arc::new(RwLock::new(client));
         DOCKER_CLIENT_INSTANCE.get_or_init(|| arc);
@@ -131,6 +88,7 @@ impl DockerClient {
     }
 
     /// 创建新的 Docker 客户端
+    #[allow(dead_code)]
     fn new(stop_timeout_secs: u64) -> Result<Self> {
         debug!("Initializing Docker client");
         let client = Docker::connect_with_local_defaults().map_err(|e| {
@@ -197,6 +155,8 @@ impl DockerClientInterface for DockerClient {
                 e
             })?;
 
+        let working_dir = self.get_container_working_dir(container_id).await?;
+        let working_dir_path = PathBuf::from(&working_dir);
         let mounts = details.mounts.unwrap_or_default();
         let mut volumes = Vec::new();
 
@@ -213,9 +173,16 @@ impl DockerClientInterface for DockerClient {
                 let source = PathBuf::from(source);
                 let destination = PathBuf::from(destination);
 
-                // 将 source 和 destination 转换为绝对路径
-                let source = utils::absolute_canonicalize_path(&source)?;
-                let destination = utils::absolute_canonicalize_path(&destination)?;
+                // 将 source 转换为绝对路径
+                // 存在性检查
+                let source = utils::absolute_canonicalize_path(&source)
+                    .context("Failed to canonicalize path for volume mount source")?;
+
+                // 将 destination 转化为容器内部的路径
+                // 容器内部路径，则不应该检查路径是否存在
+                // 而是应该获取容器的内部 WorkingDir 作为基本路径
+                let destination = utils::ensure_absolute_canonical(&destination, &working_dir_path)
+                    .context("Failed to canonicalize path for volume mount destination")?;
 
                 volumes.push(VolumeInfo {
                     source,
@@ -301,6 +268,22 @@ impl DockerClientInterface for DockerClient {
 
     fn get_stop_timeout_secs(&self) -> u64 {
         self.stop_timeout_secs
+    }
+
+    async fn get_container_working_dir(&self, id: &str) -> Result<String> {
+        let status = self
+            .client
+            .inspect_container(id, None::<InspectContainerOptions>)
+            .await?;
+        let config = status
+            .config
+            .ok_or_else(|| anyhow::anyhow!("container config not found"))?;
+
+        let working_dir = config
+            .working_dir
+            .ok_or_else(|| anyhow::anyhow!("container working dir not found"))?;
+
+        Ok(working_dir)
     }
 }
 
