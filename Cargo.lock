@@ -1396,6 +1396,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "privilege"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "765ec92721e112ffe07f5c06fb0654da0b708990888981d05cf12a7c9909df30"
+dependencies = [
+ "libc",
+ "security-framework-sys",
+ "which",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1428,6 +1440,7 @@ dependencies = [
  "fs_extra",
  "mockall",
  "predicates",
+ "privilege",
  "reqwest",
  "runas",
  "serde",
@@ -1439,7 +1452,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "walkdir",
- "winapi",
  "xz2",
 ]
 

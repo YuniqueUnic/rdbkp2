@@ -9,26 +9,28 @@ use std::process::Command;
 
 // 检查是否有管理员权限
 pub(super) fn has_admin_privileges() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        use winapi::um::securitybaseapi::IsUserAnAdmin;
-        unsafe { IsUserAnAdmin() != 0 }
-    }
+    tracing::debug!("Checking for admin privileges");
+    privilege::user::privileged()
+    // #[cfg(target_os = "windows")]
+    // {
+    //     use winapi::um::shellapi::IsUserAnAdmin;
+    //     unsafe { IsUserAnAdmin() != 0 }
+    // }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        std::process::Command::new("id")
-            .arg("-u")
-            .output()
-            .map(|output| {
-                let uid = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .parse::<u32>()
-                    .unwrap_or(1000);
-                uid == 0
-            })
-            .unwrap_or(false)
-    }
+    // #[cfg(any(target_os = "linux", target_os = "macos"))]
+    // {
+    //     std::process::Command::new("id")
+    //         .arg("-u")
+    //         .output()
+    //         .map(|output| {
+    //             let uid = String::from_utf8_lossy(&output.stdout)
+    //                 .trim()
+    //                 .parse::<u32>()
+    //                 .unwrap_or(1000);
+    //             uid == 0
+    //         })
+    //         .unwrap_or(false)
+    // }
 }
 
 // 以管理员权限重启程序
@@ -97,7 +99,7 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                 content_only: true,
                 ..Default::default()
             };
-            dir::copy(from, to, &copy_options)
+            fs_extra::dir::copy(from, to, &copy_options)
                 .map_err(|e| anyhow::anyhow!("Failed to copy directory data: {}", e))?;
         } else {
             let copy_options = fs_extra::file::CopyOptions {
@@ -105,7 +107,7 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                 skip_exist: false,
                 ..Default::default()
             };
-            file::copy(from, to, &copy_options)
+            fs_extra::file::copy(from, to, &copy_options)
                 .map_err(|e| anyhow::anyhow!("Failed to copy file data: {}", e))?;
         }
     }
