@@ -1,20 +1,17 @@
+mod privileges;
 mod prompt;
 
-use crate::config::Config;
-use crate::docker::{
-    BackupMapping, ContainerInfo, DockerClient, DockerClientInterface, VolumeInfo,
+use crate::{
+    config::Config,
+    docker::{BackupMapping, ContainerInfo, DockerClient, DockerClientInterface, VolumeInfo},
+    log_bail, log_println,
+    utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive},
 };
-use crate::utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive};
-use crate::{log_bail, log_println};
-use prompt::*;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
-use fs_extra;
-use std::io::Write;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{io::Write, path::PathBuf, time::Duration};
 use toml;
 use tracing::{debug, error, info, warn};
 
@@ -127,14 +124,14 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
             }
         }
         timer_res = timer_task => {
-            println!();
-    // 处理超时情况和结果
+            println!(); // 使得输出更美观
+            // 处理超时情况和结果
             match timer_res {
                 Ok(result) => result.map_err(|e| {
                     anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
                 }),
-        Err(_timeout_err) => {
-            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+                Err(_timeout_err) => {
+                // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
                     log_bail!(
                         "ERROR",
                 "Timeout while waiting for container {} to stop after {} seconds",
@@ -176,7 +173,9 @@ pub async fn backup(
     // 获取容器信息
     debug!("Getting container information");
     let container_info = if interactive || container.is_none() {
-        prompt::select_container_prompt(&client).await?
+        prompt::select_container_prompt(&client)
+            .await
+            .context("Failed to get container list")?
     } else {
         get_container_by_name_or_id(&client, &container.unwrap()).await?
     };
@@ -284,7 +283,6 @@ async fn backup_items(
 
     // 如果备份卷为空，则直接返回
     // 创建备份映射
-    // 创建备份映射
     let backup_mapping = BackupMapping {
         container_name: container_info.name.clone(),
         container_id: container_info.id.clone(),
@@ -342,7 +340,6 @@ async fn select_volumes<T: DockerClientInterface>(
     client: &T,
     container_info: &ContainerInfo,
 ) -> Result<(usize, Vec<VolumeInfo>)> {
-    // TODO: 检查是否支持了文件夹备份场景
     // 处理单文件 (夹) 备份场景
     if let Some(file) = file {
         let file_path = PathBuf::from(file);
@@ -384,7 +381,7 @@ async fn select_volumes<T: DockerClientInterface>(
     debug!(volume_count = volumes.len(), "Selecting volumes to backup");
     let total_volumes = volumes.len();
     let selected_volumes = if interactive {
-        select_volumes_prompt(&volumes)?
+        prompt::select_volumes_prompt(&volumes)?
     } else {
         volumes
     };
@@ -405,6 +402,8 @@ pub async fn restore(
     input: Option<String>,
     output: Option<String>,
 ) -> Result<()> {
+    prompt::require_admin_privileges_prompt()?;
+
     let config = Config::global()?;
     let interactive = config.interactive;
     let restart = config.restart;
@@ -530,6 +529,7 @@ async fn restore_volumes(
     // 开始解压
     // TODO: Docker volumes 需要 sudo/管理员权限才能修改
     // 需要做一个提权的功能，然后再去解压和覆盖还原备份文件
+    prompt::require_admin_privileges_prompt()?;
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
 }
@@ -603,21 +603,14 @@ async fn unpack_archive_move(
             target_path.to_string_lossy()
         );
 
-        // 使用 fs_extra 来复制目录内容，提供更好的错误处理和进度反馈
-        let copy_options = fs_extra::dir::CopyOptions {
-            overwrite: true,
-            skip_exist: false,
-            content_only: true,
-            ..Default::default()
-        };
-
         debug!(
             from = ?temp_source_path,
             to = ?target_path,
             "Copying volume data"
         );
 
-        fs_extra::dir::copy(&temp_source_path, target_path, &copy_options)
+        // 使用提权之后的 copy
+        privileges::privileged_copy(&temp_source_path, target_path)
             .map_err(|e| anyhow::anyhow!("Failed to copy volume data: {}", e))?;
 
         info!(volume = ?volume.name, "Volume restored successfully");

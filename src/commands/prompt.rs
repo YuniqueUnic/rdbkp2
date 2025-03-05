@@ -1,11 +1,34 @@
 use crate::{
+    commands::privileges::{has_admin_privileges, restart_with_admin_privileges},
     docker::{ContainerInfo, DockerClientInterface, VolumeInfo},
-    prompt_select,
+    log_bail, log_println, prompt_select,
 };
 
 use anyhow::Result;
-use dialoguer::{MultiSelect, Select};
+use dialoguer::{Confirm, MultiSelect, Select};
 use tracing::{debug, info};
+
+pub(super) fn require_admin_privileges_prompt() -> Result<()> {
+    if !has_admin_privileges() {
+        log_println!(
+            "WARN",
+            "❌ Please run as sudo user when restore the required container volume(s)."
+        );
+        let confirmed = Confirm::new()
+            .with_prompt("👌 Do you want to restart with sudo?")
+            .default(true)
+            .interact()?;
+
+        if !confirmed {
+            log_println!("INFO", "⛔ Restore cancelled");
+            return Ok(());
+        }
+
+        restart_with_admin_privileges()?;
+    }
+
+    log_bail!("ERROR", "👿 error on requiring admin privileges")
+}
 
 pub(super) async fn select_container_prompt<T: DockerClientInterface>(
     client: &T,

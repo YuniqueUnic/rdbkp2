@@ -105,24 +105,6 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 . $PROFILE\..\Completions\rdbkp2.ps1
 ```
 
-## 配置文件
-
-默认配置文件位于 `config.toml`，可以自定义以下设置：
-
-```toml
-# 备份文件的默认输出目录
-backup_dir = "./backups"
-
-# Docker 相关配置
-[docker]
-# Docker daemon 的地址
-host = "unix:///var/run/docker.sock"
-# 是否使用 TLS
-tls = false
-# 证书路径 (如果使用 TLS)
-# cert_path = "/path/to/cert"
-```
-
 ## 命令行参数
 
 ### 通用参数
