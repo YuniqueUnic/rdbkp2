@@ -323,6 +323,8 @@ pub struct BackupMapping {
     pub backup_time: String,
     /// 备份版本
     pub version: String,
+    // 备份的文件总数 (后续再考虑如何低开销的实现)
+    // pub total_files: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -365,6 +365,7 @@ async fn backup_items(
         volumes: selected_volumes.clone(),
         backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        // total_files: 0, // TODO
     };
 
     // 序列化为 TOML

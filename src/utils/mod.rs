@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
-use crate::{print_progress, update_print};
+use crate::{log_println, print_progress, update_print};
 
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
@@ -44,6 +44,8 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
     memory_files: &[(&str, &str)],
     exclude_patterns: &[&str],
 ) -> Result<()> {
+    log_println!("INFO", "Start compressing items");
+
     let output_file = output_file.as_ref();
 
     let sources_item = sources
@@ -90,6 +92,8 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
         "Items compression completed successfully"
     );
 
+    log_println!("INFO", "Compressing items completed successfully");
+
     Ok(())
 }
 
@@ -122,6 +126,7 @@ fn append_items<P: AsRef<Path>>(
                 debug!(path = ?entry.path(), name = ?name, "Adding file to archive");
                 tar.append_path_with_name(entry.path(), name)?;
                 items_count += 1;
+                update_print!("{}", name.to_string_lossy());
             }
         }
     } else if source.is_file() {
@@ -141,6 +146,7 @@ fn append_items<P: AsRef<Path>>(
         debug!(path = ?source, name = ?name, "Adding file to archive");
         tar.append_path_with_name(source, name)?;
         items_count += 1;
+        update_print!("{}", name.to_string_lossy());
     }
 
     Ok(items_count)
@@ -156,6 +162,7 @@ fn append_memory_files(
         header.set_mode(0o644);
         header.set_cksum();
         tar.append_data(&mut header, name, content.as_bytes())?;
+        update_print!("{}", name);
     }
     Ok(memory_files.len())
 }
@@ -197,8 +204,7 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
 
     // Unpack each entry while preserving paths
     let mut count = 0;
-    let total = archive.entries()?.count();
-    println!("Extracting files, total: {}", total);
+    println!("Extracting files");
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?;
@@ -212,7 +218,7 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
 
         debug!(path = ?target_path, "Extracting file");
         count += 1;
-        print_progress!(count, total, 30, "{}", target_path.to_string_lossy());
+        update_print!("{}. {}", count, target_path.to_string_lossy());
         entry.unpack(&target_path)?;
     }
 
