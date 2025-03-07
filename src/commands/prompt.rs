@@ -79,6 +79,8 @@ pub(super) async fn select_containers_prompt<T: DockerClientInterface>(
 
 pub(super) fn select_volumes_prompt(volumes: &[VolumeInfo]) -> Result<Vec<VolumeInfo>> {
     debug!(volume_count = volumes.len(), "Preparing volume selection");
+    debug!(volumes = ?volumes, "Volumes to select from");
+
     let volume_names: Vec<String> = volumes
         .iter()
         .map(|v| format!("{} -> {}", v.source.display(), v.destination.display()))

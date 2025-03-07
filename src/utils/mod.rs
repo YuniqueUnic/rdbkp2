@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
+use crate::{log_println, update_print};
+
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
 /// # Arguments
@@ -42,6 +44,8 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
     memory_files: &[(&str, &str)],
     exclude_patterns: &[&str],
 ) -> Result<()> {
+    log_println!("INFO", "Start compressing items");
+
     let output_file = output_file.as_ref();
 
     let sources_item = sources
@@ -59,9 +63,10 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
         e
     })?;
 
-    let xz = XzEncoder::new(file, 9);
+    // 使用 XZ 压缩，压缩级别为 3, 兼具压缩速度和压缩率
+    let xz = XzEncoder::new(file, 3);
     let mut tar = tar::Builder::new(xz);
-    debug!("Creating XZ encoder with compression level 9");
+    debug!("Creating XZ encoder with compression level 3");
 
     let mut items_count = 0;
 
@@ -86,6 +91,8 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
         output_file = ?output_file,
         "Items compression completed successfully"
     );
+
+    log_println!("INFO", "Compressing items completed successfully");
 
     Ok(())
 }
@@ -119,8 +126,10 @@ fn append_items<P: AsRef<Path>>(
                 debug!(path = ?entry.path(), name = ?name, "Adding file to archive");
                 tar.append_path_with_name(entry.path(), name)?;
                 items_count += 1;
+                update_print!("{}", name.to_string_lossy());
             }
         }
+        println!();
     } else if source.is_file() {
         // 如果文件名包含排除模式，则不添加到压缩包中
         if exclude_patterns
@@ -138,6 +147,8 @@ fn append_items<P: AsRef<Path>>(
         debug!(path = ?source, name = ?name, "Adding file to archive");
         tar.append_path_with_name(source, name)?;
         items_count += 1;
+        update_print!("{}", name.to_string_lossy());
+        println!();
     }
 
     Ok(items_count)
@@ -153,7 +164,9 @@ fn append_memory_files(
         header.set_mode(0o644);
         header.set_cksum();
         tar.append_data(&mut header, name, content.as_bytes())?;
+        update_print!("{}", name);
     }
+    println!();
     Ok(memory_files.len())
 }
 
@@ -193,6 +206,8 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
     ensure_dir_exists(target_dir)?;
 
     // Unpack each entry while preserving paths
+    let mut count = 0;
+    println!("Extracting files");
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?;
@@ -205,8 +220,11 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
         }
 
         debug!(path = ?target_path, "Extracting file");
+        count += 1;
+        update_print!("{}. {}", count, target_path.to_string_lossy());
         entry.unpack(&target_path)?;
     }
+    println!();
 
     info!(
         ?archive_path,

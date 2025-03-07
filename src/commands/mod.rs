@@ -8,7 +8,7 @@ use crate::{
     utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive},
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
 use std::{
@@ -21,7 +21,19 @@ use std::{
     time::Duration,
 };
 use toml;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
+
+static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
+
+pub(crate) static PROMPT_SELECT_CONTAINER: LazyLock<&'static str> = LazyLock::new(|| {
+    if IS_FIRST_ACCESS.swap(false, Ordering::SeqCst) {
+        "💡 Press [arrow] keys to move  [↑↓]\n\
+         ✅   -   [space] to select     [√×]\n\
+         👌   -   [enter] to confirm    [EN]\n\n"
+    } else {
+        "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]"
+    }
+});
 
 static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
 
@@ -142,13 +154,13 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
         }
         timer_res = timer_task => {
             println!(); // 使得输出更美观
-            // 处理超时情况和结果
+    // 处理超时情况和结果
             match timer_res {
                 Ok(result) => result.map_err(|e| {
                     anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
                 }),
-                Err(_timeout_err) => {
-                // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+        Err(_timeout_err) => {
+            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
                     log_bail!(
                         "ERROR",
                 "Timeout while waiting for container {} to stop after {} seconds",
@@ -160,10 +172,6 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
         }
     }
 }
-
-/*
- * backup
- */
 
 pub async fn backup(
     container: Option<String>,
@@ -187,15 +195,8 @@ pub async fn backup(
 
     let client = DockerClient::global()?;
 
-    // 获取容器信息
-    debug!("Getting container information");
-    let container_info = if interactive || container.is_none() {
-        prompt::select_container_prompt(&client)
-            .await
-            .context("Failed to get container list")?
-    } else {
-        get_container_by_name_or_id(&client, &container.unwrap()).await?
-    };
+    // Get container info using the new selection logic
+    let container_info = select_container(&client, container, interactive).await?;
 
     // 获取输出目录
     let output_dir = parse_output_dir(output, interactive, &container_info)?;
@@ -219,18 +220,88 @@ pub async fn backup(
 
     // 如果需要重启容器，则重启容器
     if restart {
-        info!(
-            container_name = ?container_info.name,
-            "Restarting container"
-        );
+        log_println!("INFO", "Restarting container {}", container_info.name);
         client.restart_container(&container_info.id).await?;
-        info!(
-            container_name = ?container_info.name,
-            "Container restarted"
-        );
+        log_println!("INFO", "Container {} restarted", container_info.name);
     }
 
     Ok(())
+}
+
+/// Handle container selection based on user input
+async fn select_container<T: DockerClientInterface>(
+    client: &T,
+    container: Option<String>,
+    interactive: bool,
+) -> Result<ContainerInfo> {
+    // If no container specified and interactive mode
+    if container.is_none() && interactive {
+        return prompt::select_container_prompt(client).await;
+    }
+
+    // If container is specified
+    if let Some(container_input) = container {
+        if container_input.is_empty() {
+            return prompt::select_container_prompt(client).await;
+        }
+
+        // Find matching containers
+        let matches = client.find_containers(&container_input).await?;
+
+        match matches.len() {
+            0 => {
+                // No matches found - show available containers and prompt for new input
+                log_println!("WARN", "No containers match '{}'", container_input);
+                list_containers().await?;
+
+                let input: String = Input::new()
+                    .with_prompt("Please enter a valid container name or ID")
+                    .with_initial_text(container_input)
+                    .allow_empty(false)
+                    .interact_text()?;
+
+                let new_matches = client.find_containers(&input).await?;
+                if new_matches.is_empty() {
+                    log_bail!("ERROR", "No containers match '{}'", input);
+                } else if new_matches.len() == 1 {
+                    Ok(new_matches[0].clone())
+                } else {
+                    let selection = Select::new()
+                        .with_prompt(prompt_select!("Select a container:"))
+                        .items(
+                            &new_matches
+                                .iter()
+                                .map(|c| format!("{} ({})", c.name, c.id))
+                                .collect::<Vec<_>>(),
+                        )
+                        .default(0)
+                        .interact()?;
+                    Ok(new_matches[selection].clone())
+                }
+            }
+            1 => Ok(matches[0].clone()),
+            _ => {
+                // Multiple matches - let user select
+                let selection = Select::new()
+                    .with_prompt(prompt_select!("Multiple matches found, please select one:"))
+                    .items(
+                        &matches
+                            .iter()
+                            .map(|c| format!("{} ({})", c.name, c.id))
+                            .collect::<Vec<_>>(),
+                    )
+                    .default(0)
+                    .interact()?;
+                Ok(matches[selection].clone())
+            }
+        }
+    } else {
+        // No container specified and non-interactive mode
+        log_bail!(
+            "ERROR",
+            "Container name or ID must be specified in non-interactive mode"
+        );
+    }
 }
 
 /// 获取输出目录
@@ -306,6 +377,7 @@ async fn backup_items(
         volumes: selected_volumes.clone(),
         backup_time: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        // total_files: 0, // TODO
     };
 
     // 序列化为 TOML
@@ -380,6 +452,8 @@ async fn select_volumes<T: DockerClientInterface>(
                 .to_string(),
         };
 
+        debug!(volume = ?volume, "Volume for single file backup");
+
         return Ok((1, vec![volume]));
     }
 
@@ -395,7 +469,6 @@ async fn select_volumes<T: DockerClientInterface>(
         );
     }
 
-    debug!(volume_count = volumes.len(), "Selecting volumes to backup");
     let total_volumes = volumes.len();
     let selected_volumes = if interactive {
         prompt::select_volumes_prompt(&volumes)?
@@ -441,7 +514,7 @@ pub async fn restore(
     let container_info = if interactive || container.is_none() {
         prompt::select_container_prompt(&client).await?
     } else {
-        get_container_by_name_or_id(&client, &container.unwrap()).await?
+        client.find_container(&container.unwrap()).await?
     };
 
     // 获取备份文件路径
@@ -544,8 +617,8 @@ async fn restore_volumes(
     stop_container_timeout(&container_info).await?;
 
     // 开始解压
-    // TODO: Docker volumes 需要 sudo/管理员权限才能修改
-    // 需要做一个提权的功能，然后再去解压和覆盖还原备份文件
+    // Docker volumes 需要 sudo/管理员权限才能修改
+    // 一个提权的功能，然后再去解压和覆盖还原备份文件
     prompt::require_admin_privileges_prompt()?;
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
@@ -742,22 +815,6 @@ fn parse_restore_file(
         "Could not find valid backup file for container {}",
         container_info.name
     )
-}
-
-async fn get_container_by_name_or_id<T: DockerClientInterface>(
-    client: &T,
-    name_or_id: &str,
-) -> Result<ContainerInfo> {
-    debug!(?name_or_id, "Looking up container by name or ID");
-    let containers = client.list_containers().await?;
-    containers
-        .into_iter()
-        .find(|c| c.name == name_or_id || c.id == name_or_id)
-        .ok_or_else(|| {
-            let err = anyhow::anyhow!("Container not found: {}", name_or_id);
-            error!(?name_or_id, "Container not found");
-            err
-        })
 }
 
 #[cfg(test)]

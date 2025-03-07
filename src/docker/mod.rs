@@ -25,6 +25,10 @@ pub trait DockerClientInterface: Send + Sync + Clone + 'static {
     async fn stop_container(&self, container_id: &str) -> Result<()>;
     async fn get_container_working_dir(&self, id: &str) -> Result<String>;
     async fn get_container_status(&self, id: &str) -> Result<String>;
+
+    async fn find_containers(&self, name_or_id: &str) -> Result<Vec<ContainerInfo>>;
+    async fn find_container(&self, name_or_id: &str) -> Result<ContainerInfo>;
+
     fn get_stop_timeout_secs(&self) -> u64;
 }
 
@@ -184,10 +188,16 @@ impl DockerClientInterface for DockerClient {
                 let destination = utils::ensure_absolute_canonical(&destination, &working_dir_path)
                     .context("Failed to canonicalize path for volume mount destination")?;
 
+                let name = source
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
                 volumes.push(VolumeInfo {
+                    name,
                     source,
                     destination,
-                    name: mount.name.unwrap_or_default(),
                 });
             } else {
                 warn!(
@@ -285,6 +295,33 @@ impl DockerClientInterface for DockerClient {
 
         Ok(working_dir)
     }
+
+    /// Find containers by partial name or ID match
+    async fn find_containers(&self, name_or_id: &str) -> Result<Vec<ContainerInfo>> {
+        let containers = self.list_containers().await?;
+        let matches: Vec<ContainerInfo> = containers
+            .into_iter()
+            .filter(|c| {
+                c.name.to_lowercase().contains(&name_or_id.to_lowercase())
+                    || c.id.contains(name_or_id)
+            })
+            .collect();
+        Ok(matches)
+    }
+
+    /// Find a container by partial name or ID match
+    async fn find_container(&self, name_or_id: &str) -> Result<ContainerInfo> {
+        debug!(?name_or_id, "Looking up container by name or ID");
+        let containers = self.list_containers().await?;
+        containers
+            .into_iter()
+            .find(|c| c.name == name_or_id || c.id == name_or_id)
+            .ok_or_else(|| {
+                let err = anyhow::anyhow!("Container not found: {}", name_or_id);
+                error!(?name_or_id, "Container not found");
+                err
+            })
+    }
 }
 
 /// 匹配容器状态
@@ -323,6 +360,8 @@ pub struct BackupMapping {
     pub backup_time: String,
     /// 备份版本
     pub version: String,
+    // 备份的文件总数 (后续再考虑如何低开销的实现)
+    // pub total_files: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
