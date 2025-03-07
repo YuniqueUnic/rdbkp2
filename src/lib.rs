@@ -30,11 +30,11 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// 是否使用交互模式
+    /// 是否使用交互模式 [default: true]
     #[arg(global = true, short, long, default_value = "true")]
     interactive: bool,
 
-    /// 是否在操作 (备份/恢复) 后重启容器
+    /// 是否在操作 (备份/恢复) 后重启容器 [default: false]
     #[arg(global = true, short, long, default_value = "false")]
     restart: bool,
 
@@ -46,11 +46,11 @@ struct Cli {
     #[arg(global = true, short, long, default_value = ".git,node_modules,target")]
     exclude: String,
 
-    /// 是否自动确认
+    /// 是否自动确认 [default: false]
     #[arg(global = true, short, long, default_value = "false")]
     yes: bool,
 
-    /// 是否显示详细日志
+    /// 是否显示详细日志 [default: false]
     #[arg(global = true, short, long, default_value = "false")]
     verbose: bool,
 }
@@ -82,10 +82,8 @@ enum Commands {
     /// 1. 检查容器是否存在
     /// 2. 检查容器是否正在运行，如果正在运行，则先停止容器
     /// 3. 检查容器是否存在挂载卷
-    /// 4. 备份挂载卷
-    /// 5. 压缩挂载卷
-    /// 6. 将压缩后的挂载卷移动到输出目录
-    /// 7. 如果设置了 --restart 选项，则重启容器
+    /// 4. 压缩备份挂载卷到输出目录
+    /// 5. 如果设置了 --restart 选项，则重启容器
     Backup {
         /// 容器名称或 ID
         #[arg(short, long)]
@@ -109,9 +107,8 @@ enum Commands {
     /// 恢复时将会进行的操作：
     /// 1. 检查容器是否存在
     /// 2. 检查容器是否正在运行，如果正在运行，则先停止容器
-    /// 3. 检查容器是否存在挂载卷
-    /// 4. 恢复挂载卷
-    /// 5. 如果设置了 --restart 选项，则重启容器
+    /// 3. 恢复挂载卷到指定路径 (如果未指定，则恢复到容器工作目录)
+    /// 4. 如果设置了 --restart 选项，则重启容器
     Restore {
         /// 容器名称或 ID
         #[arg(short, long)]

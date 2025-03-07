@@ -9,23 +9,24 @@ use dialoguer::{Confirm, MultiSelect, Select};
 use tracing::{debug, info};
 
 pub(super) fn require_admin_privileges_prompt() -> Result<()> {
-    if !has_admin_privileges() {
-        log_println!(
-            "WARN",
-            "❌ Please run as sudo user when restore the required container volume(s)."
-        );
-        let confirmed = Confirm::new()
-            .with_prompt("👌 Do you want to restart with sudo?")
-            .default(true)
-            .interact()?;
-
-        if !confirmed {
-            log_println!("INFO", "⛔ Restore cancelled");
-            return Ok(());
-        }
-
-        restart_with_admin_privileges()?;
+    if has_admin_privileges() {
+        return Ok(());
     }
+
+    log_println!(
+        "WARN",
+        "❌ Please run as sudo user when restore the required container volume(s)."
+    );
+    let confirmed = Confirm::new()
+        .with_prompt("👌 Do you want to restart with sudo?")
+        .default(true)
+        .interact()?;
+
+    if !confirmed {
+        log_bail!("WARN", "⛔ Restore cancelled");
+    }
+
+    restart_with_admin_privileges()?;
 
     log_bail!("ERROR", "👿 error on requiring admin privileges")
 }
@@ -78,6 +79,8 @@ pub(super) async fn select_containers_prompt<T: DockerClientInterface>(
 
 pub(super) fn select_volumes_prompt(volumes: &[VolumeInfo]) -> Result<Vec<VolumeInfo>> {
     debug!(volume_count = volumes.len(), "Preparing volume selection");
+    debug!(volumes = ?volumes, "Volumes to select from");
+
     let volume_names: Vec<String> = volumes
         .iter()
         .map(|v| format!("{} -> {}", v.source.display(), v.destination.display()))

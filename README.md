@@ -15,7 +15,8 @@
 确保你的系统已安装 Rust 工具链，然后执行：
 
 ```bash
-cargo install --path .
+cargo install rdbkp2                             # isntall rdbkp2
+sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2 # symbol link rdbkp2 for sudo execuation
 ```
 
 ## 使用方法
@@ -133,6 +134,10 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 
 ### 恢复命令 (restore)
 
+> [!CAUTION]
+> 💖 Restore the docker container binding Volume need Administrator privileges. <br>
+> ✅ Please run [program] as sudo / RunAsAdminsitrator 
+
 | 参数                | 描述                    |
 |---------------------|-------------------------|
 | `-c, --container`   | 容器名称或 ID           |
@@ -154,6 +159,8 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 
 ## 注意事项
 
+1. 使用 Restore 功能时请确保使用 sudo / Administrator 权限进行操作
+    - 更改，覆盖 Docker 容器挂载的 Volume(s) 时需要该权限进行写入操作 
 1. 确保有足够的磁盘空间用于备份
 2. 建议在恢复数据之前先备份当前数据
 3. 需要有访问 Docker daemon 的权限
