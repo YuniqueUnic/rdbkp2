@@ -11,20 +11,37 @@ use crate::{
 use anyhow::{Context, Result};
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
-use std::{io::Write, path::PathBuf, time::Duration};
+use std::{
+    io::Write,
+    path::PathBuf,
+    sync::{
+        LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use toml;
 use tracing::{debug, error, info, warn};
+
+static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
+
+pub(crate) static PROMPT_SELECT_CONTAINER: LazyLock<&'static str> = LazyLock::new(|| {
+    if IS_FIRST_ACCESS.swap(false, Ordering::SeqCst) {
+        "💡 Press [arrow] keys to move  [↑↓]\n\
+         ✅   -   [space] to select     [√×]\n\
+         👌   -   [enter] to confirm    [EN]\n\n"
+    } else {
+        "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]"
+    }
+});
 
 #[macro_export]
 macro_rules! prompt_select {
     ($prompt_str:expr) => {
         format!(
-            "💡 Press [arrow] keys to move  [↑↓]\n\
-             ✅   -   [space] to select     [√×]\n\
-             👌   -   [enter] to confirm    [EN]\n\
-             \n\
-             {}",
-            $prompt_str,
+            "{}{}",
+            *crate::commands::PROMPT_SELECT_CONTAINER,
+            $prompt_str
         )
     };
 }
@@ -480,7 +497,7 @@ async fn restore_volumes(
         if !yes && interactive {
             let confirmed = Confirm::new()
                 .with_prompt(format!(
-                    "❓ Are you sure you want to restore to {}?",
+                    "❓ Are you sure you want to restore to {}?\n",
                     output_path.display()
                 ))
                 .default(true)
@@ -516,7 +533,7 @@ async fn restore_volumes(
             .interact()?;
 
         if !confirmed {
-            log_println!("INFO", "Restore cancelled");
+            log_println!("INFO", "⛔ Restore cancelled");
             return Ok(());
         }
     }

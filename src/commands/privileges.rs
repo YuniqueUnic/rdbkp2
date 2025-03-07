@@ -11,75 +11,27 @@ use std::process::Command;
 pub(super) fn has_admin_privileges() -> bool {
     tracing::debug!("Checking for admin privileges");
     privilege::user::privileged()
-    // #[cfg(target_os = "windows")]
-    // {
-    //     use winapi::um::shellapi::IsUserAnAdmin;
-    //     unsafe { IsUserAnAdmin() != 0 }
-    // }
-
-    // #[cfg(any(target_os = "linux", target_os = "macos"))]
-    // {
-    //     std::process::Command::new("id")
-    //         .arg("-u")
-    //         .output()
-    //         .map(|output| {
-    //             let uid = String::from_utf8_lossy(&output.stdout)
-    //                 .trim()
-    //                 .parse::<u32>()
-    //                 .unwrap_or(1000);
-    //             uid == 0
-    //         })
-    //         .unwrap_or(false)
-    // }
 }
 
 // 以管理员权限重启程序
 #[allow(unreachable_code)]
 pub(super) fn restart_with_admin_privileges() -> Result<()> {
+    let current_exe = std::env::current_exe()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    let mut cmd = privilege::runas::Command::new(current_exe);
+
     #[cfg(target_os = "windows")]
     {
-        let current_exe = std::env::current_exe()?;
-        let args: Vec<String> = std::env::args().skip(1).collect();
-
-        RunasCommand::new(current_exe)
-            .args(&args)
-            .status()
-            .map_err(|e| anyhow::anyhow!("Failed to restart with admin privileges: {}", e))?;
-
-        std::process::exit(0);
+        cmd.gui(true);
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        let current_exe = std::env::current_exe()?;
-        let args: Vec<String> = std::env::args().skip(1).collect();
+    cmd.args(&args)
+        .force_prompt(!has_admin_privileges())
+        .run()
+        .map_err(|e| anyhow::anyhow!("Failed to restart with admin privileges: {}", e))?;
 
-        Command::new("pkexec")
-            .arg(current_exe)
-            .args(args)
-            .status()
-            .map_err(|e| anyhow::anyhow!("Failed to restart with admin privileges: {}", e))?;
-
-        std::process::exit(0);
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let current_exe = std::env::current_exe()?;
-        let args: Vec<String> = std::env::args().skip(1).collect();
-
-        Command::new("osascript")
-            .arg("-e")
-            .arg(format!(
-                "do shell script \"'{}' {}\" with administrator privileges",
-                current_exe.to_string_lossy(),
-                args.join(" ")
-            ))
-            .status()
-            .map_err(|e| anyhow::anyhow!("Failed to restart with admin privileges: {}", e))?;
-
-        std::process::exit(0);
-    }
+    std::process::exit(0);
 
     Ok(())
 }
