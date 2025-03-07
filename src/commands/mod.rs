@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 use toml;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
 
@@ -234,7 +234,7 @@ async fn select_container<T: DockerClientInterface>(
         }
 
         // Find matching containers
-        let matches = find_matching_containers(client, &container_input).await?;
+        let matches = client.find_containers(&container_input).await?;
 
         match matches.len() {
             0 => {
@@ -248,7 +248,7 @@ async fn select_container<T: DockerClientInterface>(
                     .allow_empty(false)
                     .interact_text()?;
 
-                let new_matches = find_matching_containers(client, &input).await?;
+                let new_matches = client.find_containers(&input).await?;
                 if new_matches.is_empty() {
                     log_bail!("ERROR", "No containers match '{}'", input);
                 } else if new_matches.len() == 1 {
@@ -440,6 +440,8 @@ async fn select_volumes<T: DockerClientInterface>(
                 .to_string(),
         };
 
+        debug!(volume = ?volume, "Volume for single file backup");
+
         return Ok((1, vec![volume]));
     }
 
@@ -455,7 +457,6 @@ async fn select_volumes<T: DockerClientInterface>(
         );
     }
 
-    debug!(volume_count = volumes.len(), "Selecting volumes to backup");
     let total_volumes = volumes.len();
     let selected_volumes = if interactive {
         prompt::select_volumes_prompt(&volumes)?
@@ -501,7 +502,7 @@ pub async fn restore(
     let container_info = if interactive || container.is_none() {
         prompt::select_container_prompt(&client).await?
     } else {
-        get_container(&client, &container.unwrap()).await?
+        client.find_container(&container.unwrap()).await?
     };
 
     // 获取备份文件路径
@@ -604,8 +605,8 @@ async fn restore_volumes(
     stop_container_timeout(&container_info).await?;
 
     // 开始解压
-    // TODO: Docker volumes 需要 sudo/管理员权限才能修改
-    // 需要做一个提权的功能，然后再去解压和覆盖还原备份文件
+    // Docker volumes 需要 sudo/管理员权限才能修改
+    // 一个提权的功能，然后再去解压和覆盖还原备份文件
     prompt::require_admin_privileges_prompt()?;
     unpack_archive_move(container_info, file_path, &backup_mapping.volumes).await?;
     Ok(())
@@ -802,37 +803,6 @@ fn parse_restore_file(
         "Could not find valid backup file for container {}",
         container_info.name
     )
-}
-
-async fn get_container<T: DockerClientInterface>(
-    client: &T,
-    name_or_id: &str,
-) -> Result<ContainerInfo> {
-    debug!(?name_or_id, "Looking up container by name or ID");
-    let containers = client.list_containers().await?;
-    containers
-        .into_iter()
-        .find(|c| c.name == name_or_id || c.id == name_or_id)
-        .ok_or_else(|| {
-            let err = anyhow::anyhow!("Container not found: {}", name_or_id);
-            error!(?name_or_id, "Container not found");
-            err
-        })
-}
-
-/// Find containers by partial name or ID match
-async fn find_matching_containers<T: DockerClientInterface>(
-    client: &T,
-    name_or_id: &str,
-) -> Result<Vec<ContainerInfo>> {
-    let containers = client.list_containers().await?;
-    let matches: Vec<ContainerInfo> = containers
-        .into_iter()
-        .filter(|c| {
-            c.name.to_lowercase().contains(&name_or_id.to_lowercase()) || c.id.contains(name_or_id)
-        })
-        .collect();
-    Ok(matches)
 }
 
 #[cfg(test)]

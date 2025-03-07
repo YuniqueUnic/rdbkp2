@@ -105,6 +105,7 @@ pub fn update_line_print(msg: &str) {
 }
 
 /// 进度条的默认宽度
+#[allow(dead_code)]
 pub const PROGRESS_BAR_WIDTH: usize = 30;
 
 #[macro_export]

@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
-use crate::{log_println, print_progress, update_print};
+use crate::{log_println, update_print};
 
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
@@ -129,6 +129,7 @@ fn append_items<P: AsRef<Path>>(
                 update_print!("{}", name.to_string_lossy());
             }
         }
+        println!();
     } else if source.is_file() {
         // 如果文件名包含排除模式，则不添加到压缩包中
         if exclude_patterns
@@ -147,6 +148,7 @@ fn append_items<P: AsRef<Path>>(
         tar.append_path_with_name(source, name)?;
         items_count += 1;
         update_print!("{}", name.to_string_lossy());
+        println!();
     }
 
     Ok(items_count)
@@ -164,6 +166,7 @@ fn append_memory_files(
         tar.append_data(&mut header, name, content.as_bytes())?;
         update_print!("{}", name);
     }
+    println!();
     Ok(memory_files.len())
 }
 
@@ -221,6 +224,7 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
         update_print!("{}. {}", count, target_path.to_string_lossy());
         entry.unpack(&target_path)?;
     }
+    println!();
 
     info!(
         ?archive_path,
