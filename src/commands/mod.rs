@@ -14,10 +14,7 @@ use dialoguer::{Confirm, Input, Select};
 use std::{
     io::Write,
     path::PathBuf,
-    sync::{
-        LazyLock,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 use toml;
@@ -25,17 +22,16 @@ use tracing::{debug, info, warn};
 
 static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
 
-pub(crate) static PROMPT_SELECT_CONTAINER: LazyLock<&'static str> = LazyLock::new(|| {
-    "💡 Press [arrow] keys to move  [↑↓]\n\
-    ✅   -   [space] to select     [√×]\n\
-    👌   -   [enter] to confirm    [EN]\n\n"
-});
+pub(crate) static PROMPT_SELECT_CONTAINER: &'static str = "💡 Press [arrow] keys to move  [↑↓]\n\
+✅   -   [space] to select     [√×]\n\
+👌   -   [enter] to confirm    [EN]\n\n";
 
 pub(crate) fn prompt_select(msg: &str) -> String {
-    if IS_FIRST_ACCESS.swap(false, Ordering::SeqCst) {
-        format!("{}{}", *PROMPT_SELECT_CONTAINER, msg)
+    if IS_FIRST_ACCESS.load(Ordering::SeqCst) {
+        IS_FIRST_ACCESS.swap(false, Ordering::SeqCst);
+        format!("{}{}", PROMPT_SELECT_CONTAINER, msg)
     } else {
-        format!("{}{}", "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]", msg)
+        format!("{}{}", "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]\n", msg)
     }
 }
 
@@ -259,7 +255,7 @@ async fn select_container<T: DockerClientInterface>(
                     Ok(new_matches[0].clone())
                 } else {
                     let selection = Select::new()
-                        .with_prompt(prompt_select("🫙 Select a container:"))
+                        .with_prompt(prompt_select("🐋 Select a container:"))
                         .items(
                             &new_matches
                                 .iter()
@@ -276,7 +272,7 @@ async fn select_container<T: DockerClientInterface>(
                 // Multiple matches - let user select
                 let selection = Select::new()
                     .with_prompt(prompt_select(
-                        "🫙 Multiple matches found, please select one:",
+                        "🐋 Multiple matches found, please select one:",
                     ))
                     .items(
                         &matches
