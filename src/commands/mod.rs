@@ -8,7 +8,7 @@ use crate::{
     utils::{self, create_timestamp_filename, ensure_dir_exists, unpack_archive},
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Local;
 use dialoguer::{Confirm, Input, Select};
 use std::{
@@ -142,13 +142,13 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
         }
         timer_res = timer_task => {
             println!(); // 使得输出更美观
-            // 处理超时情况和结果
+    // 处理超时情况和结果
             match timer_res {
                 Ok(result) => result.map_err(|e| {
                     anyhow::anyhow!("Failed to stop container {}: {}", container_info.name, e)
                 }),
-                Err(_timeout_err) => {
-                // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
+        Err(_timeout_err) => {
+            // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
                     log_bail!(
                         "ERROR",
                 "Timeout while waiting for container {} to stop after {} seconds",
@@ -160,10 +160,6 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
         }
     }
 }
-
-/*
- * backup
- */
 
 pub async fn backup(
     container: Option<String>,
@@ -187,15 +183,8 @@ pub async fn backup(
 
     let client = DockerClient::global()?;
 
-    // 获取容器信息
-    debug!("Getting container information");
-    let container_info = if interactive || container.is_none() {
-        prompt::select_container_prompt(&client)
-            .await
-            .context("Failed to get container list")?
-    } else {
-        get_container_by_name_or_id(&client, &container.unwrap()).await?
-    };
+    // Get container info using the new selection logic
+    let container_info = select_container(&client, container, interactive).await?;
 
     // 获取输出目录
     let output_dir = parse_output_dir(output, interactive, &container_info)?;
@@ -219,18 +208,88 @@ pub async fn backup(
 
     // 如果需要重启容器，则重启容器
     if restart {
-        info!(
-            container_name = ?container_info.name,
-            "Restarting container"
-        );
+        log_println!("INFO", "Restarting container {}", container_info.name);
         client.restart_container(&container_info.id).await?;
-        info!(
-            container_name = ?container_info.name,
-            "Container restarted"
-        );
+        log_println!("INFO", "Container {} restarted", container_info.name);
     }
 
     Ok(())
+}
+
+/// Handle container selection based on user input
+async fn select_container<T: DockerClientInterface>(
+    client: &T,
+    container: Option<String>,
+    interactive: bool,
+) -> Result<ContainerInfo> {
+    // If no container specified and interactive mode
+    if container.is_none() && interactive {
+        return prompt::select_container_prompt(client).await;
+    }
+
+    // If container is specified
+    if let Some(container_input) = container {
+        if container_input.is_empty() {
+            return prompt::select_container_prompt(client).await;
+        }
+
+        // Find matching containers
+        let matches = find_matching_containers(client, &container_input).await?;
+
+        match matches.len() {
+            0 => {
+                // No matches found - show available containers and prompt for new input
+                log_println!("WARN", "No containers match '{}'", container_input);
+                list_containers().await?;
+
+                let input: String = Input::new()
+                    .with_prompt("Please enter a valid container name or ID")
+                    .with_initial_text(container_input)
+                    .allow_empty(false)
+                    .interact_text()?;
+
+                let new_matches = find_matching_containers(client, &input).await?;
+                if new_matches.is_empty() {
+                    log_bail!("ERROR", "No containers match '{}'", input);
+                } else if new_matches.len() == 1 {
+                    Ok(new_matches[0].clone())
+                } else {
+                    let selection = Select::new()
+                        .with_prompt(prompt_select!("Select a container:"))
+                        .items(
+                            &new_matches
+                                .iter()
+                                .map(|c| format!("{} ({})", c.name, c.id))
+                                .collect::<Vec<_>>(),
+                        )
+                        .default(0)
+                        .interact()?;
+                    Ok(new_matches[selection].clone())
+                }
+            }
+            1 => Ok(matches[0].clone()),
+            _ => {
+                // Multiple matches - let user select
+                let selection = Select::new()
+                    .with_prompt(prompt_select!("Multiple matches found, please select one:"))
+                    .items(
+                        &matches
+                            .iter()
+                            .map(|c| format!("{} ({})", c.name, c.id))
+                            .collect::<Vec<_>>(),
+                    )
+                    .default(0)
+                    .interact()?;
+                Ok(matches[selection].clone())
+            }
+        }
+    } else {
+        // No container specified and non-interactive mode
+        log_bail!(
+            "ERROR",
+            "Container name or ID must be specified in non-interactive mode"
+        );
+    }
 }
 
 /// 获取输出目录
@@ -441,7 +500,7 @@ pub async fn restore(
     let container_info = if interactive || container.is_none() {
         prompt::select_container_prompt(&client).await?
     } else {
-        get_container_by_name_or_id(&client, &container.unwrap()).await?
+        get_container(&client, &container.unwrap()).await?
     };
 
     // 获取备份文件路径
@@ -744,7 +803,7 @@ fn parse_restore_file(
     )
 }
 
-async fn get_container_by_name_or_id<T: DockerClientInterface>(
+async fn get_container<T: DockerClientInterface>(
     client: &T,
     name_or_id: &str,
 ) -> Result<ContainerInfo> {
@@ -758,6 +817,21 @@ async fn get_container_by_name_or_id<T: DockerClientInterface>(
             error!(?name_or_id, "Container not found");
             err
         })
+}
+
+/// Find containers by partial name or ID match
+async fn find_matching_containers<T: DockerClientInterface>(
+    client: &T,
+    name_or_id: &str,
+) -> Result<Vec<ContainerInfo>> {
+    let containers = client.list_containers().await?;
+    let matches: Vec<ContainerInfo> = containers
+        .into_iter()
+        .filter(|c| {
+            c.name.to_lowercase().contains(&name_or_id.to_lowercase()) || c.id.contains(name_or_id)
+        })
+        .collect();
+    Ok(matches)
 }
 
 #[cfg(test)]

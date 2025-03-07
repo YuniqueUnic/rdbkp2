@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
+use crate::{print_progress, update_print};
+
 /// 压缩目录/文件 (列表)，并在压缩包中添加额外的内存文件
 ///
 /// # Arguments
@@ -59,9 +61,10 @@ pub fn compress_with_memory_file<P: AsRef<Path>>(
         e
     })?;
 
-    let xz = XzEncoder::new(file, 9);
+    // 使用 XZ 压缩，压缩级别为 3, 兼具压缩速度和压缩率
+    let xz = XzEncoder::new(file, 3);
     let mut tar = tar::Builder::new(xz);
-    debug!("Creating XZ encoder with compression level 9");
+    debug!("Creating XZ encoder with compression level 3");
 
     let mut items_count = 0;
 
@@ -193,6 +196,9 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
     ensure_dir_exists(target_dir)?;
 
     // Unpack each entry while preserving paths
+    let mut count = 0;
+    let total = archive.entries()?.count();
+    println!("Extracting files, total: {}", total);
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?;
@@ -205,6 +211,8 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
         }
 
         debug!(path = ?target_path, "Extracting file");
+        count += 1;
+        print_progress!(count, total, 30, "{}", target_path.to_string_lossy());
         entry.unpack(&target_path)?;
     }
 
