@@ -10,7 +10,7 @@ A command-line tool for backing up and restoring Docker container data.
 - Supports both command-line arguments and interactive operations.
 - Employs XZ compression algorithm for efficient compression.
 - Offers command-line completion for Bash, Zsh, Fish, and PowerShell.
-~~- Supports custom configuration files.~~
+- ~~Supports custom configuration files.~~
 
 ## Installation
 
@@ -120,8 +120,6 @@ Add the following line to your PowerShell profile:
 | `-t, --timeout`      | 容器停止超时时间（秒）           | `30`                               |
 | `-e, --exclude`      | 排除模式                         | `".git,node_modules,target"`       |
 | `-r, --restart`      | 操作后重启容器                   | `false`                            |
-
-# End of Selection
 
 ### Backup Command (`backup`)
 
