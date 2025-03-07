@@ -26,37 +26,29 @@ use tracing::{debug, info, warn};
 static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
 
 pub(crate) static PROMPT_SELECT_CONTAINER: LazyLock<&'static str> = LazyLock::new(|| {
-    if IS_FIRST_ACCESS.swap(false, Ordering::SeqCst) {
-        "💡 Press [arrow] keys to move  [↑↓]\n\
-         ✅   -   [space] to select     [√×]\n\
-         👌   -   [enter] to confirm    [EN]\n\n"
-    } else {
-        "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]"
-    }
+    "💡 Press [arrow] keys to move  [↑↓]\n\
+    ✅   -   [space] to select     [√×]\n\
+    👌   -   [enter] to confirm    [EN]\n\n"
 });
 
-static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
-
-pub(crate) static PROMPT_SELECT_CONTAINER: LazyLock<&'static str> = LazyLock::new(|| {
+pub(crate) fn prompt_select(msg: &str) -> String {
     if IS_FIRST_ACCESS.swap(false, Ordering::SeqCst) {
-        "💡 Press [arrow] keys to move  [↑↓]\n\
-         ✅   -   [space] to select     [√×]\n\
-         👌   -   [enter] to confirm    [EN]\n\n"
+        format!("{}{}", *PROMPT_SELECT_CONTAINER, msg)
     } else {
-        "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]"
+        format!("{}{}", "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]", msg)
     }
-});
-
-#[macro_export]
-macro_rules! prompt_select {
-    ($prompt_str:expr) => {
-        format!(
-            "{}{}",
-            *crate::commands::PROMPT_SELECT_CONTAINER,
-            $prompt_str
-        )
-    };
 }
+
+// #[macro_export]
+// macro_rules! prompt_select {
+//     ($prompt_str:expr) => {
+//         format!(
+//             "{}{}",
+//             *crate::commands::PROMPT_SELECT_CONTAINER,
+//             $prompt_str
+//         )
+//     };
+// }
 
 const MAPPING_FILE_NAME: &str = "mapping.toml";
 
@@ -255,7 +247,7 @@ async fn select_container<T: DockerClientInterface>(
                 list_containers().await?;
 
                 let input: String = Input::new()
-                    .with_prompt("Please enter a valid container name or ID")
+                    .with_prompt("🪪 Please enter a valid container name or ID")
                     .with_initial_text(container_input)
                     .allow_empty(false)
                     .interact_text()?;
@@ -267,7 +259,7 @@ async fn select_container<T: DockerClientInterface>(
                     Ok(new_matches[0].clone())
                 } else {
                     let selection = Select::new()
-                        .with_prompt(prompt_select!("Select a container:"))
+                        .with_prompt(prompt_select("🫙 Select a container:"))
                         .items(
                             &new_matches
                                 .iter()
@@ -283,7 +275,9 @@ async fn select_container<T: DockerClientInterface>(
             _ => {
                 // Multiple matches - let user select
                 let selection = Select::new()
-                    .with_prompt(prompt_select!("Multiple matches found, please select one:"))
+                    .with_prompt(prompt_select(
+                        "🫙 Multiple matches found, please select one:",
+                    ))
                     .items(
                         &matches
                             .iter()
@@ -327,7 +321,7 @@ fn parse_output_dir(
         let default_dir = config.backup_dir.to_string_lossy().to_string();
 
         let input: String = Input::new()
-            .with_prompt("Backup output directory")
+            .with_prompt("💾 Backup output directory")
             .default(default_dir)
             .allow_empty(false)
             .interact_text()?;
@@ -746,7 +740,7 @@ fn parse_restore_file(
                     });
 
                     let selection = Select::new()
-                        .with_prompt(prompt_select!("Select a backup file to restore:"))
+                        .with_prompt(prompt_select("💡 Select a backup file to restore:"))
                         .items(
                             &files
                                 .iter()
@@ -791,7 +785,7 @@ fn parse_restore_file(
     );
 
     let input = Input::new()
-        .with_prompt("Please input the backup file path")
+        .with_prompt("💾 Please input the backup file path")
         .allow_empty(false)
         .validate_with(|input: &String| -> Result<()> {
             let path = PathBuf::from(input);

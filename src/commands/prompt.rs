@@ -1,7 +1,10 @@
 use crate::{
-    commands::privileges::{has_admin_privileges, restart_with_admin_privileges},
+    commands::{
+        privileges::{has_admin_privileges, restart_with_admin_privileges},
+        prompt_select,
+    },
     docker::{ContainerInfo, DockerClientInterface, VolumeInfo},
-    log_bail, log_println, prompt_select,
+    log_bail, log_println,
 };
 
 use anyhow::Result;
@@ -40,7 +43,7 @@ pub(super) async fn select_container_prompt<T: DockerClientInterface>(
 
     debug!("Displaying container selection prompt");
     let selection = Select::new()
-        .with_prompt(prompt_select!("🫙 Select one container"))
+        .with_prompt(prompt_select("🫙 Select one container"))
         .items(&container_names)
         .default(0)
         .interact()?;
@@ -64,7 +67,7 @@ pub(super) async fn select_containers_prompt<T: DockerClientInterface>(
 
     debug!("Displaying container multi-selection prompt");
     let selections = MultiSelect::new()
-        .with_prompt(prompt_select!("🫙 Select one or more containers"))
+        .with_prompt(prompt_select("🫙 Select one or more containers"))
         .items(&container_names)
         .defaults(&[true])
         .interact()?;
@@ -89,9 +92,9 @@ pub(super) fn select_volumes_prompt(volumes: &[VolumeInfo]) -> Result<Vec<Volume
     debug!("Displaying volume selection prompt");
 
     let selections = MultiSelect::new()
-        .with_prompt(prompt_select!(
+        .with_prompt(prompt_select(
             "   host ------------> container\n\
-            📃 Select one or more volume(s)"
+            📃 Select one or more volume(s)",
         ))
         .items(&volume_names)
         .defaults(&[true])
@@ -113,9 +116,9 @@ pub(super) fn select_volume_prompt(volumes: &[VolumeInfo]) -> Result<VolumeInfo>
         .collect();
 
     let selection = Select::new()
-        .with_prompt(prompt_select!(
+        .with_prompt(prompt_select(
             "   host -> container\n\
-            📃 Select one volume"
+            📃 Select one volume",
         ))
         .items(&volume_names)
         .default(0)
