@@ -1,87 +1,87 @@
 # Docker Container Data Backup Tool
 
-[EN README.md](./README_EN.md)
+[中文 README.md](./README_CN.md)
 
-一个用于备份和恢复 Docker 容器数据的命令行工具。
+A command-line tool for backing up and restoring Docker container data.
 
-## 功能特点
+## Key Features
 
-- 支持备份和恢复 Docker 容器的数据卷
-- 支持命令行参数和交互式操作
-- 使用 XZ 压缩算法进行高效压缩
-- 支持自定义配置文件
-- 支持命令行补全（Bash/Zsh/Fish/PowerShell）
+- Backs up and restores Docker container data volumes.
+- Supports both command-line arguments and interactive operations.
+- Employs XZ compression algorithm for efficient compression.
+- Offers command-line completion for Bash, Zsh, Fish, and PowerShell.
+~~- Supports custom configuration files.~~
 
-## 安装
+## Installation
 
-确保你的系统已安装 Rust 工具链，然后执行：
+Ensure you have the Rust toolchain installed on your system, then execute:
 
 ```bash
-cargo install rdbkp2                             # isntall rdbkp2
-sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2 # symbol link rdbkp2 for sudo execuation
+cargo install rdbkp2                               # install rdbkp2
+sudo ln -s $(which rdbkp2) /usr/local/bin/rdbkp2   # create symbolic link for sudo execution
 ```
 
-## 使用方法
+## Usage
 
-### 列出可用的容器
+### Listing Available Containers
 
 ```bash
 rdbkp2 list
 ```
 
-### 备份容器数据
+### Backing Up Container Data
 
-交互式模式：
+Interactive Mode:
 
 ```bash
 rdbkp2 backup -i
 ```
 
-命令行模式：
+Command-line Mode:
 
 ```bash
 rdbkp2 backup -c container_name -o /path/to/backup/dir
 ```
 
-### 恢复容器数据
+### Restoring Container Data
 
-交互式模式：
+Interactive Mode:
 
 ```bash
 rdbkp2 restore -i
 ```
 
-命令行模式：
+Command-line Mode:
 
 ```bash
 rdbkp2 restore -c container_name -f /path/to/backup/file
 ```
 
-### 命令行补全
+### Command-Line Completion
 
-生成命令行补全脚本，支持多种 shell：
+Generate command-line completion scripts for various shells:
 
 ```bash
-# 生成 Bash 补全脚本
+# Generate Bash completion script
 rdbkp2 completions bash > ~/.local/share/bash-completion/completions/rdbkp2
 
-# 生成 Zsh 补全脚本
+# Generate Zsh completion script
 rdbkp2 completions zsh > ~/.zsh/_rdbkp2
 
-# 生成 Fish 补全脚本
+# Generate Fish completion script
 rdbkp2 completions fish > ~/.config/fish/completions/rdbkp2.fish
 
-# 生成 PowerShell 补全脚本
+# Generate PowerShell completion script
 # Windows PowerShell
 mkdir -p $PROFILE\..\Completions
 rdbkp2 completions powershell > $PROFILE\..\Completions\rdbkp2.ps1
 ```
 
-#### 启用补全功能
+#### Enabling Completion Functionality
 
 ##### Bash
 
-将以下内容添加到 `~/.bashrc` 或 `~/.bash_profile`：
+Add the following lines to your `~/.bashrc` or `~/.bash_profile`:
 
 ```bash
 source ~/.local/share/bash-completion/completions/rdbkp2
@@ -89,7 +89,7 @@ source ~/.local/share/bash-completion/completions/rdbkp2
 
 ##### Zsh
 
-将补全脚本放置在正确的位置后，确保在 `~/.zshrc` 中启用了补全功能：
+After placing the completion script in the correct location, ensure completion is enabled in your `~/.zshrc`:
 
 ```zsh
 autoload -Uz compinit
@@ -98,72 +98,74 @@ compinit
 
 ##### Fish
 
-Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本，无需额外配置。
+Fish shell automatically loads completion scripts from the `~/.config/fish/completions` directory. No additional configuration is needed.
 
 ##### PowerShell
 
-在 PowerShell 配置文件中添加：
+Add the following line to your PowerShell profile:
 
 ```powershell
 . $PROFILE\..\Completions\rdbkp2.ps1
 ```
 
-## 命令行参数
+## Command-Line Arguments
 
-### 通用参数
+### Common Arguments
 
-| 参数                | 描述                    | 默认值                         |
-|---------------------|-------------------------|--------------------------------|
-| `-y, --yes`         | 自动确认                | `false`                        |
-| `-i, --interactive` | 使用交互式模式          | `true`                         |
-| `-v, --verbose`     | 显示详细日志            | `false`                        |
-| `-t, --timeout`     | 停止容器超时时间 (秒)   | `30`                           |
-| `-e, --exclude`     | 排除模式                | `".git,node_modules,target"`   |
-| `-r, --restart`     | 操作后重启容器          | `false`                        |
+| Argument             | Description                      | Default Value                      |
+|----------------------|----------------------------------|------------------------------------|
+| `-y, --yes`          | 自动确认提示                     | `false`                            |
+| `-i, --interactive`  | 使用交互式模式                   | `true`                             |
+| `-v, --verbose`      | 显示详细日志                     | `false`                            |
+| `-t, --timeout`      | 容器停止超时时间（秒）           | `30`                               |
+| `-e, --exclude`      | 排除模式                         | `".git,node_modules,target"`       |
+| `-r, --restart`      | 操作后重启容器                   | `false`                            |
 
-### 备份命令 (backup)
+# End of Selection
 
-| 参数                | 描述                    |
-|---------------------|-------------------------|
-| `-c, --container`   | 容器名称或 ID           |
-| `-f, --file`        | 需要备份的文件 (夹) 路径|
-| `-o, --output`      | 输出目录                |
-|                     | 继承自通用参数          |
-| `-i, --interactive` | 使用交互式模式          |
-| `-r, --restart`     | 操作后重启容器          |
-| `-t, --timeout`     | 停止容器超时时间 (秒)   |
-| `-e, --exclude`     | 排除模式                |
+### Backup Command (`backup`)
 
-### 恢复命令 (restore)
+| Argument             | Description                                      |
+|----------------------|--------------------------------------------------|
+| `-c, --container`    | Container name or ID                             |
+| `-f, --file`         | Path to file(s) or directory(s) to back up       |
+| `-o, --output`       | Output directory                                 |
+|                      | Inherited from common arguments                  |
+| `-i, --interactive`  | Use interactive mode                             |
+| `-r, --restart`      | Restart the container after operation            |
+| `-t, --timeout`      | Timeout for stopping the container (seconds)     |
+| `-e, --exclude`      | Exclusion patterns                               |
+
+### Restore Command (`restore`)
 
 > [!CAUTION]
-> 💖 Restore the docker container binding Volume need Administrator privileges. <br>
-> ✅ Please run [program] as sudo / RunAsAdminsitrator 
+> 💖 **Caution**: Restoring Docker container bound volumes requires Administrator privileges. <br>
+> ✅ Please run [program] as `sudo` / `Run as Administrator`.
 
-| 参数                | 描述                    |
-|---------------------|-------------------------|
-| `-c, --container`   | 容器名称或 ID           |
-| `-f, --file`        | 备份文件 (压缩包) 路径  |
-| `-o, --output`      | 输出目录                |
-|                     | 继承自通用参数          |
-| `-i, --interactive` | 使用交互式模式          |
-| `-r, --restart`     | 操作后重启容器          |
-| `-t, --timeout`     | 停止容器超时时间 (秒)   |
-| ~~`-e, --exclude`~~ | ~~排除模式~~            |
+| Argument             | Description                                      |
+|----------------------|--------------------------------------------------|
+| `-c, --container`    | Container name or ID                             |
+| `-f, --file`         | Path to backup file (compressed archive)         |
+| `-o, --output`       | Output directory                                 |
+|                      | Inherited from common arguments                  |
+| `-i, --interactive`  | Use interactive mode                             |
+| `-r, --restart`      | Restart container after operation                |
+| `-t, --timeout`      | Container stop timeout (seconds)                 |
+| ~~`-e, --exclude`~~  | ~~Exclude patterns~~                             |
 
-### 列表命令 (list)
+### List Command (`list`)
 
-无参数，显示所有可用的容器。
+No arguments. Displays all available containers.
 
-### 补全命令 (completions)
+### Completions Command (`completions`)
 
-- `shell`: 指定 shell 类型（bash/zsh/fish/powershell）
+- `shell`: Specifies the shell type (bash/zsh/fish/powershell)
 
-## 注意事项
+## Important Notes
 
-1. 使用 Restore 功能时请确保使用 sudo / Administrator 权限进行操作
-    - 更改，覆盖 Docker 容器挂载的 Volume(s) 时需要该权限进行写入操作 
-1. 确保有足够的磁盘空间用于备份
-2. 建议在恢复数据之前先备份当前数据
-3. 需要有访问 Docker daemon 的权限
-4. Windows 用户需要确保 Docker Desktop 已启动
+1.  When using the Restore function, ensure you operate with `sudo` / Administrator privileges.
+    -   This permission is required for write operations when changing and overwriting Docker container-mounted volumes.
+2.  Ensure sufficient disk space is available for backups.
+3.  It is recommended to back up your current data before restoring.
+4.  You need to have permissions to access the Docker daemon.
+5.  Windows users need to ensure Docker Desktop is running.
