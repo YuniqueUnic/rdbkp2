@@ -114,12 +114,12 @@ Add the following line to your PowerShell profile:
 
 | Argument             | Description                      | Default Value                      |
 |----------------------|----------------------------------|------------------------------------|
-| `-y, --yes`          | 自动确认提示                     | `false`                            |
-| `-i, --interactive`  | 使用交互式模式                   | `true`                             |
-| `-v, --verbose`      | 显示详细日志                     | `false`                            |
-| `-t, --timeout`      | 容器停止超时时间（秒）           | `30`                               |
-| `-e, --exclude`      | 排除模式                         | `".git,node_modules,target"`       |
-| `-r, --restart`      | 操作后重启容器                   | `false`                            |
+| `-y, --yes`          | Automatic confirmation prompt    | `false`                            |
+| `-i, --interactive`  | Use interactive mode             | `true`                             |
+| `-v, --verbose`      | Display detailed logs            | `false`                            |
+| `-t, --timeout`      | Container stop timeout (seconds) | `30`                               |
+| `-e, --exclude`      | Exclusion patterns               | `".git,node_modules,target"`       |
+| `-r, --restart`      | Restart container after operation| `false`                            |
 
 ### Backup Command (`backup`)
 
