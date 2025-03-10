@@ -1,5 +1,8 @@
 mod privileges;
 mod prompt;
+mod symbollink;
+
+pub(crate) use symbollink::{create_symbollink, remove_symbollink};
 
 use crate::{
     config::Config,

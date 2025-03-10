@@ -132,6 +132,29 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    Link {
+        #[command(subcommand)]
+        action: LinkActions,
+    },
+}
+
+/// 链接操作
+///
+/// 安装/卸载软连接链接
+///
+/// 示例：
+/// ```bash
+/// rdbkp2 link install
+/// rdbkp2 link uninstall
+/// ```
+#[derive(Subcommand)]
+enum LinkActions {
+    /// 安装软连接链接 sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2
+    Install,
+
+    /// 卸载软连接链接 sudo rm /usr/local/bin/rdbkp2
+    Uninstall,
 }
 
 #[instrument(level = "INFO")]
@@ -247,6 +270,16 @@ async fn do_action(action: Commands) -> Result<()> {
                 &mut io::stdout(),
             );
         }
+        Commands::Link { action } => match action {
+            LinkActions::Install => {
+                info!("Executing link install command");
+                commands::create_symbollink()?;
+            }
+            LinkActions::Uninstall => {
+                info!("Executing link uninstall command");
+                commands::remove_symbollink()?;
+            }
+        },
     }
     Ok(())
 }
