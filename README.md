@@ -17,9 +17,18 @@ A command-line tool for backing up and restoring Docker container data.
 Ensure you have the Rust toolchain installed on your system, then execute:
 
 ```bash
-cargo install rdbkp2                               # install rdbkp2
-#sudo ln -s $(which rdbkp2) /usr/local/bin/rdbkp2  # create symbolic link for sudo execution
-rdbkp2 link install -y                             # install of manually create the soft symbol-link like above comment
+# Install rdbkp2
+cargo install rdbkp2
+
+# Create symbolic link to enable sudo rdbkp2 ... usage
+# sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2  # Create a symbolic link for rdbkp2 to /usr/local/bin/rdbkp2 to enable sudo rdbkp2 ... usage
+rdbkp2 link install                                 # Use this command to replace manual symbolic link creation above
+
+# Check for updates
+rdbkp2 update
+
+# Uninstall rdbkp2
+rdbkp2 uninstall
 ```
 
 ## Usage

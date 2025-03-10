@@ -133,6 +133,16 @@ enum Commands {
         shell: Shell,
     },
 
+    /// 检查更新
+    ///
+    /// 检查是否有新版本可用，如果有则提示更新方法
+    Update,
+
+    /// 完全卸载
+    ///
+    /// 删除符号链接并提示如何完成卸载
+    Uninstall,
+
     Link {
         #[command(subcommand)]
         action: LinkActions,
@@ -270,14 +280,22 @@ async fn do_action(action: Commands) -> Result<()> {
                 &mut io::stdout(),
             );
         }
+        Commands::Update => {
+            info!("Checking for updates");
+            commands::lifecycle::check_update().await?;
+        }
+        Commands::Uninstall => {
+            info!("Executing uninstall command");
+            commands::lifecycle::uninstall().await?;
+        }
         Commands::Link { action } => match action {
             LinkActions::Install => {
                 info!("Executing soft-link install command");
-                commands::create_symbollink()?;
+                commands::symbollink::create_symbollink()?;
             }
             LinkActions::Uninstall => {
                 info!("Executing soft-link uninstall command");
-                commands::remove_symbollink()?;
+                commands::symbollink::remove_symbollink()?;
             }
         },
     }
