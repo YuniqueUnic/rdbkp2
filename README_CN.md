@@ -71,7 +71,6 @@ rdbkp2 link install             # create the symbol-link at /usr/local/bin/rdbkp
 rdbkp2 link uninstall           # remove the symbol-link at /usr/local/bin/rdbkp2
 ```
 
-
 ### 命令行补全
 
 生成命令行补全脚本，支持多种 shell：
@@ -144,6 +143,7 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 | `-f, --file`        | 需要备份的文件 (夹) 路径|
 | `-o, --output`      | 输出目录                |
 |                     | 继承自通用参数          |
+| `-y, --yes`         | 自动确认                |
 | `-i, --interactive` | 使用交互式模式          |
 | `-r, --restart`     | 操作后重启容器          |
 | `-t, --timeout`     | 停止容器超时时间 (秒)   |
@@ -152,7 +152,7 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 ### 恢复命令 (restore)
 
 > [!CAUTION]
-> 💖 Restore the docker container binding Volume need Administrator privileges. <br>
+> <br>💖 Restore the docker container binding Volume need Administrator privileges. <br>
 > ✅ Please run [program] as sudo / RunAsAdminsitrator 
 
 | 参数                | 描述                    |
@@ -161,6 +161,7 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 | `-f, --file`        | 备份文件 (压缩包) 路径  |
 | `-o, --output`      | 输出目录                |
 |                     | 继承自通用参数          |
+| `-y, --yes`         | 自动确认                |
 | `-i, --interactive` | 使用交互式模式          |
 | `-r, --restart`     | 操作后重启容器          |
 | `-t, --timeout`     | 停止容器超时时间 (秒)   |
@@ -173,6 +174,16 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 ### 补全命令 (completions)
 
 - `shell`: 指定 shell 类型（bash/zsh/fish/powershell）
+
+### Link 及其子命令 (`Link install/uninstall`)
+
+> [!CAUTION]
+> <br>💖 **注意**: 安装软符号链接需要管理员权限。
+
+| 参数                 | 描述                     |
+|----------------------|--------------------------|
+|                      | 继承自通用参数           |
+| `-y, --yes`          | 自动确认                 |
 
 ## 注意事项
 
