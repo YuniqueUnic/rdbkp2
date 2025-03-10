@@ -7,6 +7,8 @@ use std::{
 };
 use tracing::{debug, error, instrument};
 
+use crate::utils;
+
 #[allow(dead_code)]
 #[deprecated(since = "1.0.0", note = "no need to load config file")]
 const DEFAULT_CONFIG_FILE_PATH: &str = "./config.toml";
@@ -72,8 +74,10 @@ pub struct DockerConfig {
 
 impl Default for Config {
     fn default() -> Self {
+        let backup_dir = utils::get_default_backup_dir();
+
         Self {
-            backup_dir: PathBuf::from("./backups"),
+            backup_dir,
             interactive: true,
             restart: false,
             verbose: false,

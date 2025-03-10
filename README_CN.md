@@ -32,6 +32,12 @@ rdbkp2 list
 
 ### 备份容器数据
 
+> [!INFO]
+> <br>按照以下优先级选择默认的备份目录：
+> 1. $APPDATA/rdbkp2 (Windows) 或 ~/.local/share/rdbkp2 (Unix)
+> 2. $HOME/rdbkp2
+> 3. ./rdbkp2 (当前目录)
+
 交互式模式：
 
 ```bash

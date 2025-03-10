@@ -48,6 +48,7 @@ dunce = "1.0.5"
 # Mock 测试
 mockall = "0.13.1"
 privilege = "0.3.0"
+dirs = "6.0.0"
 
 
 # 针对 Linux 的依赖

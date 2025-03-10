@@ -1,5 +1,5 @@
 use std::{
-    io,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -7,6 +7,34 @@ use anyhow::Result;
 use tracing::{debug, error, info};
 
 use crate::log_bail;
+
+/// 获取默认的备份目录
+///
+/// 按照以下优先级选择备份目录：
+/// 1. APPDATA/rdbkp2 (Windows) 或 ~/.local/share/rdbkp2 (Unix)
+/// 2. HOME/rdbkp2
+/// 3. ./rdbkp2 (当前目录)
+pub(crate) fn get_default_backup_dir() -> PathBuf {
+    let backup_dir = dirs::data_local_dir()
+        .or_else(|| dirs::home_dir())
+        .unwrap_or_else(|| {
+            tracing::warn!("无法获取系统目录，将使用当前目录");
+            PathBuf::from(".")
+        })
+        .join("rdbkp2");
+
+    if let Err(err) = fs::create_dir_all(&backup_dir) {
+        tracing::warn!(
+            "创建备份目录失败 {}: {}，将使用当前目录",
+            backup_dir.display(),
+            err
+        );
+        return PathBuf::from("./rdbkp2");
+    }
+
+    tracing::debug!("使用备份目录：{}", backup_dir.display());
+    backup_dir
+}
 
 /// 确保目录存在，如果不存在则创建
 ///
