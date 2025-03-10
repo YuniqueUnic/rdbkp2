@@ -306,7 +306,7 @@ mod tests {
 
         // 获取全局配置并验证
         let global_config = Config::global()?;
-        assert_eq!(global_config.backup_dir, PathBuf::from("./backups"));
+        assert_eq!(global_config.backup_dir, utils::get_default_backup_dir());
 
         // 测试更新配置
         println!("Updating config");
@@ -333,7 +333,7 @@ mod tests {
 
         // 从文件加载配置
         let loaded_config = Config::load_from_file(&config_path)?;
-        assert_eq!(loaded_config.backup_dir, PathBuf::from("./backups"));
+        assert_eq!(loaded_config.backup_dir, utils::get_default_backup_dir());
 
         Ok(())
     }
