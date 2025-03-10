@@ -17,8 +17,9 @@
 确保你的系统已安装 Rust 工具链，然后执行：
 
 ```bash
-cargo install rdbkp2                             # isntall rdbkp2
-sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2 # symbol link rdbkp2 for sudo execuation
+cargo install rdbkp2                                # 安装 rdbkp2
+# sudo ln -s $(where rdbkp2) /usr/local/bin/rdbkp2  # 创建 rdbkp2 的软链接到 /usr/local/bin/rdbkp2, 以实现 sudo rdbkp2 ... 的用法
+rdbkp2 link install                                 # 使用该指令取代上面的手动创建软链接
 ```
 
 ## 使用方法
@@ -56,6 +57,14 @@ rdbkp2 restore -i
 ```bash
 rdbkp2 restore -c container_name -f /path/to/backup/file
 ```
+
+### 创建/删除软链接
+
+```bash
+rdbkp2 link install             # create the symbol-link at /usr/local/bin/rdbkp2
+rdbkp2 link uninstall           # remove the symbol-link at /usr/local/bin/rdbkp2
+```
+
 
 ### 命令行补全
 

@@ -272,11 +272,11 @@ async fn do_action(action: Commands) -> Result<()> {
         }
         Commands::Link { action } => match action {
             LinkActions::Install => {
-                info!("Executing link install command");
+                info!("Executing soft-link install command");
                 commands::create_symbollink()?;
             }
             LinkActions::Uninstall => {
-                info!("Executing link uninstall command");
+                info!("Executing soft-link uninstall command");
                 commands::remove_symbollink()?;
             }
         },

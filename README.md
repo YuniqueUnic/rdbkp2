@@ -18,7 +18,8 @@ Ensure you have the Rust toolchain installed on your system, then execute:
 
 ```bash
 cargo install rdbkp2                               # install rdbkp2
-sudo ln -s $(which rdbkp2) /usr/local/bin/rdbkp2   # create symbolic link for sudo execution
+#sudo ln -s $(which rdbkp2) /usr/local/bin/rdbkp2  # create symbolic link for sudo execution
+rdbkp2 link install -y                             # install of manually create the soft symbol-link like above comment
 ```
 
 ## Usage
@@ -55,6 +56,13 @@ Command-line Mode:
 
 ```bash
 rdbkp2 restore -c container_name -f /path/to/backup/file
+```
+
+### Create/Remove Symbol-link for program
+
+```bash
+rdbkp2 link install             # create the symbol-link at /usr/local/bin/rdbkp2
+rdbkp2 link uninstall           # remove the symbol-link at /usr/local/bin/rdbkp2
 ```
 
 ### Command-Line Completion
@@ -129,6 +137,7 @@ Add the following line to your PowerShell profile:
 | `-f, --file`         | Path to file(s) or directory(s) to back up       |
 | `-o, --output`       | Output directory                                 |
 |                      | Inherited from common arguments                  |
+| `-y, --yes`          | Automatic confirmation prompt                    |
 | `-i, --interactive`  | Use interactive mode                             |
 | `-r, --restart`      | Restart the container after operation            |
 | `-t, --timeout`      | Timeout for stopping the container (seconds)     |
@@ -146,6 +155,7 @@ Add the following line to your PowerShell profile:
 | `-f, --file`         | Path to backup file (compressed archive)         |
 | `-o, --output`       | Output directory                                 |
 |                      | Inherited from common arguments                  |
+| `-y, --yes`          | Automatic confirmation prompt                    |
 | `-i, --interactive`  | Use interactive mode                             |
 | `-r, --restart`      | Restart container after operation                |
 | `-t, --timeout`      | Container stop timeout (seconds)                 |
@@ -158,6 +168,16 @@ No arguments. Displays all available containers.
 ### Completions Command (`completions`)
 
 - `shell`: Specifies the shell type (bash/zsh/fish/powershell)
+
+### Link SubCommand (`Link install/uninstall`)
+
+> [!CAUTION]
+> 💖 **Caution**: Install soft-symbol-link requires Administrator privileges. <br>
+
+| Argument             | Description                                      |
+|----------------------|--------------------------------------------------|
+|                      | Inherited from common arguments                  |
+| `-y, --yes`          | Automatic confirmation prompt                    |
 
 ## Important Notes
 

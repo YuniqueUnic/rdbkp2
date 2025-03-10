@@ -7,10 +7,19 @@ use std::path::Path;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::process::Command;
 
+use super::prompt;
+
 // 检查是否有管理员权限
 pub(super) fn has_admin_privileges() -> bool {
     tracing::debug!("Checking for admin privileges");
     privilege::user::privileged()
+}
+
+pub(super) fn ensure_admin_privileges() -> Result<()> {
+    if !has_admin_privileges() {
+        prompt::require_admin_privileges_prompt()?;
+    }
+    Ok(())
 }
 
 // 以管理员权限重启程序
