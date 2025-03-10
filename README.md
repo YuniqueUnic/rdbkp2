@@ -41,8 +41,8 @@ rdbkp2 list
 
 ### Backing Up Container Data
 
-> [!INFO]
-> <br>The default backup directory is selected based on the following priority:
+> [!TIP]
+> The default backup directory is selected based on the following priority:
 > 1. $APPDATA/rdbkp2 (Windows) or ~/.local/share/rdbkp2 (Unix)
 > 2. $HOME/rdbkp2
 > 3. ./rdbkp2 (current directory)
@@ -161,7 +161,7 @@ Add the following line to your PowerShell profile:
 ### Restore Command (`restore`)
 
 > [!CAUTION]
-> <br>💖 **Caution**: Restoring Docker container bound volumes requires Administrator privileges. <br>
+> 💖 **Caution**: Restoring Docker container bound volumes requires Administrator privileges. <br>
 > ✅ Please run [program] as `sudo` / `Run as Administrator`.
 
 | Argument             | Description                                      |
@@ -187,7 +187,7 @@ No arguments. Displays all available containers.
 ### Link SubCommand (`Link install/uninstall`)
 
 > [!CAUTION]
-> <br>💖 **Caution**: Install soft-symbol-link requires Administrator privileges.
+> 💖 **Caution**: Install soft-symbol-link requires Administrator privileges.
 
 | Argument             | Description                                      |
 |----------------------|--------------------------------------------------|

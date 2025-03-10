@@ -41,8 +41,8 @@ rdbkp2 list
 
 ### 备份容器数据
 
-> [!INFO]
-> <br>按照以下优先级选择默认的备份目录：
+> [!TIP]
+> 按照以下优先级选择默认的备份目录：
 > 1. $APPDATA/rdbkp2 (Windows) 或 ~/.local/share/rdbkp2 (Unix)
 > 2. $HOME/rdbkp2
 > 3. ./rdbkp2 (当前目录)
@@ -161,7 +161,7 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 ### 恢复命令 (restore)
 
 > [!CAUTION]
-> <br>💖 Restore the docker container binding Volume need Administrator privileges. <br>
+> 💖 Restore the docker container binding Volume need Administrator privileges. <br>
 > ✅ Please run [program] as sudo / RunAsAdminsitrator 
 
 | 参数                | 描述                    |
@@ -187,7 +187,7 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 ### Link 及其子命令 (`Link install/uninstall`)
 
 > [!CAUTION]
-> <br>💖 **注意**: 安装软符号链接需要管理员权限。
+> 💖 **注意**: 安装软符号链接需要管理员权限。
 
 | 参数                 | 描述                     |
 |----------------------|--------------------------|
