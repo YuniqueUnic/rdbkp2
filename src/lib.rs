@@ -59,8 +59,8 @@ struct Cli {
     #[arg(global = true, short, long, default_value = "false")]
     verbose: bool,
 
-    /// 设置语言 [default: Cn]
-    #[arg(global = true, short, long, default_value = "Cn", value_enum)]
+    /// 设置语言
+    #[arg(global = true, short, long, default_value = "zh", value_enum)]
     language: Language,
 }
 
@@ -74,7 +74,7 @@ enum Shell {
 
 #[derive(Clone, ValueEnum, Debug)]
 enum Language {
-    Cn,
+    Zh,
     En,
     Ja,
     Ko,
@@ -87,7 +87,7 @@ enum Language {
 impl From<Language> for String {
     fn from(language: Language) -> Self {
         match language {
-            Language::Cn => "zh-CN".to_string(),
+            Language::Zh => "zh-CN".to_string(),
             Language::En => "en".to_string(),
             Language::Ja => "ja".to_string(),
             Language::Ko => "ko".to_string(),
@@ -271,7 +271,10 @@ pub async fn run() -> Result<()> {
     rust_i18n::set_locale(&language);
     #[cfg(debug_assertions)]
     {
-        println!("语言：{}", t!("language"));
+        println!("1. langugage:{}", t!("language.zh-CN"));
+        println!("2. langugage:{}", t!("language.en"));
+        println!("3. langugage:{}", t!("language.ja"));
+        println!("3. langugage:{}", t!("language"));
     }
 
     // 初始化全局 runtime 配置

@@ -319,7 +319,7 @@ fn parse_output_dir(
         let default_dir = config.backup_dir.to_string_lossy().to_string();
 
         let input: String = Input::new()
-            .with_prompt("💾 Backup output directory")
+            .with_prompt(t!("backup_out_dir_prompt.zh-CN"))
             .default(default_dir)
             .allow_empty(false)
             .interact_text()?;

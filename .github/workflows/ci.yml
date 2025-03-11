@@ -100,25 +100,13 @@ jobs:
           brew install openssl@3
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
           
-          # Install XZ utils with universal binaries for both architectures
+          # For x86_64 target on macOS, we need to handle the architecture mismatch
           if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
-            # For x86_64 target, we need to ensure we have x86_64 libraries
-            brew uninstall --ignore-dependencies xz || true
+            # Install xz with universal binary support using Homebrew
+            brew install --build-from-source xz
             
-            # Install xz from source with universal binary support
-            curl -L https://github.com/tukaani-project/xz/releases/download/v5.6.1/xz-5.6.1.tar.gz -o xz.tar.gz
-            tar -xzf xz.tar.gz
-            cd xz-*
-            
-            # Configure and build for x86_64
-            ./configure --prefix=/usr/local --disable-dependency-tracking --disable-shared --enable-static "CFLAGS=-arch x86_64" "LDFLAGS=-arch x86_64"
-            make -j$(sysctl -n hw.ncpu)
-            sudo make install
-            cd ..
-            
-            # Set environment variables to use the static library
+            # Set environment variables for static linking
             echo "LZMA_API_STATIC=1" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
           fi
       
       - name: Install cross
@@ -145,17 +133,26 @@ jobs:
           version = "0.1.7"
           features = ["static"]' >> Cargo.toml
       
+      # Add vendored feature for all dependencies that support it
+      - name: Configure vendored features for macOS x86_64
+        if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
+        run: |
+          # Create a .cargo/config.toml file to enable static linking
+          mkdir -p .cargo
+          cat > .cargo/config.toml << EOF
+          [target.x86_64-apple-darwin]
+          rustflags = ["-C", "link-arg=-arch", "-C", "link-arg=x86_64"]
+          
+          [build]
+          rustflags = ["-C", "target-feature=+crt-static"]
+          EOF
+      
       - name: Build binary
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }}
           else
-            # For macOS x86_64, we need to ensure we're using the right architecture
-            if [ "${{ runner.os }}" = "macOS" ] && [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
-              RUSTFLAGS="-C link-arg=-arch -C link-arg=x86_64" cargo build --release --target ${{ matrix.target }}
-            else
-              cargo build --release --target ${{ matrix.target }}
-            fi
+            cargo build --release --target ${{ matrix.target }}
           fi
         shell: bash
         env:
