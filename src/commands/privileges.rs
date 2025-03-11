@@ -11,7 +11,7 @@ use super::prompt;
 
 // 检查是否有管理员权限
 pub(super) fn has_admin_privileges() -> bool {
-    tracing::debug!("Checking for admin privileges");
+    tracing::debug!("{}", t!("privileges.has_admin_privileges"));
     privilege::user::privileged()
 }
 
@@ -38,7 +38,12 @@ pub(super) fn restart_with_admin_privileges() -> Result<()> {
     cmd.args(&args)
         .force_prompt(!has_admin_privileges())
         .run()
-        .map_err(|e| anyhow::anyhow!("Failed to restart with admin privileges: {}", e))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "{}",
+                t!("privileges.restart_with_admin_privileges", "error" = e)
+            )
+        })?;
 
     std::process::exit(0);
 
@@ -61,7 +66,7 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                 ..Default::default()
             };
             fs_extra::dir::copy(from, to, &copy_options)
-                .map_err(|e| anyhow::anyhow!("Failed to copy directory data: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e)))?;
         } else {
             let copy_options = fs_extra::file::CopyOptions {
                 overwrite: true,
@@ -69,7 +74,7 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                 ..Default::default()
             };
             fs_extra::file::copy(from, to, &copy_options)
-                .map_err(|e| anyhow::anyhow!("Failed to copy file data: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e)))?;
         }
     }
 
@@ -84,16 +89,18 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                     content_only: true,
                     ..Default::default()
                 };
-                fs_extra::dir::copy(from, to, &copy_options)
-                    .map_err(|e| anyhow::anyhow!("Failed to copy directory data: {}", e))?;
+                fs_extra::dir::copy(from, to, &copy_options).map_err(|e| {
+                    anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
+                })?;
             } else {
                 let copy_options = fs_extra::file::CopyOptions {
                     overwrite: true,
                     skip_exist: false,
                     ..Default::default()
                 };
-                fs_extra::file::copy(from, to, &copy_options)
-                    .map_err(|e| anyhow::anyhow!("Failed to copy file data: {}", e))?;
+                fs_extra::file::copy(from, to, &copy_options).map_err(|e| {
+                    anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
+                })?;
             }
         } else {
             // 否则使用 sudo 命令复制
@@ -115,29 +122,28 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                             .arg(parent)
                             .status()
                             .map_err(|e| {
-                                anyhow::anyhow!("Failed to create parent directory: {}", e)
+                                anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
                             })?;
 
                         if !mkdir_status.success() {
                             return Err(anyhow::anyhow!(
-                                "Failed to create parent directory, exit code: {:?}",
-                                mkdir_status.code()
+                                "{}",
+                                t!("privileges.copy_failed_parent_dir", "error" = "sudo mkdir")
                             ));
                         }
                     }
                 }
             }
 
-            let status = cmd
-                .arg(from)
-                .arg(to)
-                .status()
-                .map_err(|e| anyhow::anyhow!("Failed to execute sudo cp: {}", e))?;
+            let status =
+                cmd.arg(from).arg(to).status().map_err(|e| {
+                    anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
+                })?;
 
             if !status.success() {
                 return Err(anyhow::anyhow!(
-                    "Failed to copy with sudo, exit code: {:?}",
-                    status.code()
+                    "{}",
+                    t!("privileges.copy_failed", "error" = "sudo cp")
                 ));
             }
 
@@ -149,12 +155,14 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
                     .arg("755") // 或者使用更合适的权限
                     .arg(to)
                     .status()
-                    .map_err(|e| anyhow::anyhow!("Failed to set permissions: {}", e))?;
+                    .map_err(|e| {
+                        anyhow::anyhow!("{}", t!("privileges.set_permissions_failed", "error" = e))
+                    })?;
 
                 if !chmod_status.success() {
                     return Err(anyhow::anyhow!(
-                        "Failed to set permissions, exit code: {:?}",
-                        chmod_status.code()
+                        "{}",
+                        t!("privileges.set_permissions_failed", "error" = "chmod")
                     ));
                 }
             }

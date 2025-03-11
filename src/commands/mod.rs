@@ -57,8 +57,13 @@ pub async fn list_containers() -> Result<()> {
     debug!("Retrieving container list");
     let containers = client.list_containers().await?;
 
-    println!("\nAvailable containers:");
-    println!("{:<20} {:<24} {:<20}", "NAME", "ID", "STATUS");
+    println!("\n{}:", t!("commands.available_containers"));
+    println!(
+        "{:<20} {:<24} {:<20}",
+        t!("commands.container_name"),
+        t!("commands.container_id"),
+        t!("commands.container_status")
+    );
     println!("{:-<64}", "");
 
     for container in &containers {
@@ -77,7 +82,13 @@ pub async fn list_containers() -> Result<()> {
 
 async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
     // 首先尝试停止容器
-    println!("Attempting to stop container {}", container_info.name);
+    println!(
+        "{}",
+        t!(
+            "commands.attempt_to_stop_container",
+            "container_name" = container_info.name
+        )
+    );
     let client = DockerClient::global()?;
 
     let stop_timeout_secs = client.get_stop_timeout_secs();
@@ -97,7 +108,8 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
                     if status != "running" && status != "restarting" {
                         log_println!(
                             "INFO",
-                            "Container {} stopped successfully with status: {}",
+                            "{} {} {}",
+                            t!("commands.container_stopped"),
                             container_info.name,
                             status
                         );
@@ -106,9 +118,12 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
                         if flag == 0 {
                             log_println!(
                                 "INFO",
-                                "Container {} still stopping, current status: {}",
-                                container_info.name,
-                                status
+                                "{}",
+                                t!(
+                                    "commands.container_still_stopping",
+                                    "name" = container_info.name,
+                                    "status" = status
+                                ),
                             );
                         }
 
@@ -121,9 +136,12 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
                     // 获取状态失败，返回 Err
                     log_bail!(
                         "ERROR",
-                        "Failed to get container status for container {}: {}",
-                        container_info.name,
-                        e
+                        "{}",
+                        t!(
+                            "commands.get_container_status_failed",
+                            "name" = container_info.name,
+                            "error" = e
+                        ),
                     );
                 }
             }
@@ -138,7 +156,15 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
             match stop_res {
                 Ok(_) => Ok(()),
                 Err(e) => {
-                    log_bail!("ERROR", "Failed to stop container {}: {}", container_info.name, e);
+                    log_bail!(
+                        "ERROR",
+                        "{}",
+                        t!(
+                            "commands.stop_container_failed",
+                            "name" = container_info.name,
+                            "error" = e
+                        ),
+                    );
                 }
             }
         }
@@ -153,9 +179,12 @@ async fn stop_container_timeout(container_info: &ContainerInfo) -> Result<()> {
             // _timeout_err 是 tokio::time::error::Elapsed 类型的错误
                     log_bail!(
                         "ERROR",
-                "Timeout while waiting for container {} to stop after {} seconds",
-                        container_info.name,
-                        stop_timeout_secs
+                        "{}",
+                        t!(
+                            "commands.stop_container_timeout",
+                            "name" = container_info.name,
+                            "timeout" = stop_timeout_secs
+                        ),
                     );
                 }
             }
@@ -210,9 +239,20 @@ pub async fn backup(
 
     // 如果需要重启容器，则重启容器
     if restart {
-        log_println!("INFO", "Restarting container {}", container_info.name);
+        log_println!(
+            "INFO",
+            "{}",
+            t!(
+                "commands.restarting_container",
+                "name" = container_info.name
+            )
+        );
         client.restart_container(&container_info.id).await?;
-        log_println!("INFO", "Container {} restarted", container_info.name);
+        log_println!(
+            "INFO",
+            "{}",
+            t!("commands.container_restarted", "name" = container_info.name)
+        );
     }
 
     Ok(())
@@ -241,23 +281,34 @@ async fn select_container<T: DockerClientInterface>(
         match matches.len() {
             0 => {
                 // No matches found - show available containers and prompt for new input
-                log_println!("WARN", "No containers match '{}'", container_input);
+                log_println!(
+                    "WARN",
+                    "{}",
+                    t!("commands.no_container_matched", "name" = container_input),
+                );
                 list_containers().await?;
 
                 let input: String = Input::new()
-                    .with_prompt("🪪 Please enter a valid container name or ID")
+                    .with_prompt(t!("commands.please_enter_a_valid_container_name_or_id"))
                     .with_initial_text(container_input)
                     .allow_empty(false)
                     .interact_text()?;
 
                 let new_matches = client.find_containers(&input).await?;
                 if new_matches.is_empty() {
-                    log_bail!("ERROR", "No containers match '{}'", input);
+                    log_bail!(
+                        "ERROR",
+                        "{}",
+                        t!("commands.no_container_matched", "name" = input),
+                    );
                 } else if new_matches.len() == 1 {
                     Ok(new_matches[0].clone())
                 } else {
                     let selection = Select::new()
-                        .with_prompt(prompt_select("🐋 Select a container:"))
+                        .with_prompt(prompt_select(&format!(
+                            "{}",
+                            t!("prompt.select_container_prompt"),
+                        )))
                         .items(
                             &new_matches
                                 .iter()
@@ -273,9 +324,10 @@ async fn select_container<T: DockerClientInterface>(
             _ => {
                 // Multiple matches - let user select
                 let selection = Select::new()
-                    .with_prompt(prompt_select(
-                        "🐋 Multiple matches found, please select one:",
-                    ))
+                    .with_prompt(prompt_select(&format!(
+                        "{}",
+                        t!("commands.multiple_matches_found"),
+                    )))
                     .items(
                         &matches
                             .iter()
@@ -291,7 +343,8 @@ async fn select_container<T: DockerClientInterface>(
         // No container specified and non-interactive mode
         log_bail!(
             "ERROR",
-            "Container name or ID must be specified in non-interactive mode"
+            "{}",
+            t!("commands.container_name_or_id_must_be_specified_in_non_interactive_mode"),
         );
     }
 }
@@ -319,7 +372,7 @@ fn parse_output_dir(
         let default_dir = config.backup_dir.to_string_lossy().to_string();
 
         let input: String = Input::new()
-            .with_prompt(t!("backup_out_dir_prompt.zh-CN"))
+            .with_prompt(t!("prompt.backup_out_dir_input_prompt"))
             .default(default_dir)
             .allow_empty(false)
             .interact_text()?;
@@ -358,7 +411,7 @@ async fn backup_items(
 
     // 如果备份卷为空，则直接返回
     if selected_volumes.is_empty() {
-        log_bail!("ERROR", "No volumes for backup, please check your input");
+        log_bail!("ERROR", "{}", t!("commands.no_volumes_for_backup"));
     }
 
     // 如果备份卷为空，则直接返回
@@ -408,9 +461,12 @@ async fn backup_items(
 
     log_println!(
         "INFO",
-        "Backup {} volumes completed: {}",
-        selected_volumes.len(),
-        backup_path.to_string_lossy()
+        "{}",
+        t!(
+            "commands.backup_volumes_completed",
+            "volumes_count" = selected_volumes.len(),
+            "backup_path" = backup_path.to_string_lossy()
+        )
     );
     Ok(())
 }
@@ -429,8 +485,11 @@ async fn select_volumes<T: DockerClientInterface>(
         if !file_path.exists() {
             log_bail!(
                 "ERROR",
-                "Path does not exist: {}",
-                file_path.to_string_lossy()
+                "{}",
+                t!(
+                    "commands.path_does_not_exist",
+                    "path" = file_path.to_string_lossy()
+                )
             );
         }
 
@@ -456,8 +515,11 @@ async fn select_volumes<T: DockerClientInterface>(
     if volumes.is_empty() {
         log_bail!(
             "ERROR",
-            "No volumes found for container {}",
-            container_info.name
+            "{}",
+            t!(
+                "commands.no_volumes_found_for_container",
+                "container_name" = container_info.name
+            )
         );
     }
 
@@ -469,7 +531,7 @@ async fn select_volumes<T: DockerClientInterface>(
     };
 
     if selected_volumes.is_empty() {
-        log_bail!("ERROR", "No volumes selected for backup");
+        log_bail!("ERROR", "{}", t!("commands.no_volumes_selected_for_backup"));
     }
 
     Ok((total_volumes, selected_volumes))
@@ -519,12 +581,20 @@ pub async fn restore(
     if restart {
         info!(
             container_name = ?container_info.name,
-            "Restarting container"
+            "{}",
+            t!(
+                "commands.restarting_container",
+                "name" = container_info.name
+            )
         );
         client.restart_container(&container_info.id).await?;
         info!(
             container_name = ?container_info.name,
-            "Container restarted"
+            "{}",
+            t!(
+                "commands.container_restarted",
+                "name" = container_info.name
+            )
         );
     }
 
@@ -546,9 +616,12 @@ async fn restore_volumes(
     if container_info.name != backup_mapping.container_name {
         log_bail!(
             "ERROR",
-            "Backup is for container {} but trying to restore to {}",
-            backup_mapping.container_name,
-            container_info.name
+            "{}",
+            t!(
+                "commands.backup_is_for_container",
+                "backup_container" = backup_mapping.container_name,
+                "restore_container" = container_info.name
+            )
         );
     }
 
@@ -562,14 +635,17 @@ async fn restore_volumes(
         if !yes && interactive {
             let confirmed = Confirm::new()
                 .with_prompt(format!(
-                    "❓ Are you sure you want to restore to {}?\n",
-                    output_path.display()
+                    "{}",
+                    t!(
+                        "commands.are_you_sure_you_want_to_restore_to",
+                        "path" = output_path.display()
+                    )
                 ))
                 .default(true)
                 .interact()?;
 
             if !confirmed {
-                log_println!("INFO", "Restore cancelled");
+                log_println!("INFO", "{}", t!("prompt.restore_cancelled"));
                 return Ok(());
             }
         }
@@ -586,19 +662,22 @@ async fn restore_volumes(
     if !yes && interactive {
         let confirmed = Confirm::new()
             .with_prompt(format!(
-                "❓ Are you sure you want to restore to original paths?\n{}\n",
-                backup_mapping
-                    .volumes
-                    .iter()
-                    .map(|v| format!(" - {} -> {}", v.name, v.source.display()))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                "{}",
+                t!(
+                    "commands.are_you_sure_you_want_to_restore_to",
+                    "path" = backup_mapping
+                        .volumes
+                        .iter()
+                        .map(|v| format!(" - {} -> {}", v.name, v.source.display()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
             ))
             .default(true)
             .interact()?;
 
         if !confirmed {
-            log_println!("INFO", "⛔ Restore cancelled");
+            log_println!("INFO", "{}", t!("prompt.restore_cancelled"));
             return Ok(());
         }
     }
@@ -629,9 +708,12 @@ async fn unpack_archive_to(
     );
 
     println!(
-        "Restoring {} to {}",
-        file_path.to_string_lossy(),
-        output_dir.to_string_lossy()
+        "{}",
+        t!(
+            "commands.restoring_to",
+            "file_path" = file_path.to_string_lossy(),
+            "output_dir" = output_dir.to_string_lossy()
+        )
     );
 
     // 解压备份文件到指定目录
@@ -738,7 +820,10 @@ fn parse_restore_file(
                     });
 
                     let selection = Select::new()
-                        .with_prompt(prompt_select("💡 Select a backup file to restore:"))
+                        .with_prompt(prompt_select(&format!(
+                            "{}",
+                            t!("commands.select_backup_file_to_restore")
+                        )))
                         .items(
                             &files
                                 .iter()
@@ -778,12 +863,15 @@ fn parse_restore_file(
     // 4. Prompt user for input and try again
     log_println!(
         "WARN",
-        "❌ No backup files found for container {}",
-        container_info.name
+        "{}",
+        t!(
+            "commands.no_backup_files_found_for_container",
+            "container_name" = container_info.name
+        )
     );
 
     let input = Input::new()
-        .with_prompt("💾 Please input the backup file path")
+        .with_prompt(t!("prompt.backup_file_path_input_prompt"))
         .allow_empty(false)
         .validate_with(|input: &String| -> Result<()> {
             let path = PathBuf::from(input);
@@ -804,8 +892,11 @@ fn parse_restore_file(
     // 5. If all attempts fail, return error
     log_bail!(
         "ERROR",
-        "Could not find valid backup file for container {}",
-        container_info.name
+        "{}",
+        t!(
+            "commands.could_not_find_valid_backup_file_for_container",
+            "container_name" = container_info.name
+        )
     )
 }
 

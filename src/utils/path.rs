@@ -18,21 +18,22 @@ pub(crate) fn get_default_backup_dir() -> PathBuf {
     let backup_dir = dirs::data_local_dir()
         .or_else(|| dirs::home_dir())
         .unwrap_or_else(|| {
-            tracing::warn!("无法获取系统目录，将使用当前目录");
+            tracing::warn!("{}", t!("utils.path.failed_to_get_system_dir"));
             PathBuf::from(".")
         })
         .join("rdbkp2");
 
     if let Err(err) = fs::create_dir_all(&backup_dir) {
         tracing::warn!(
-            "创建备份目录失败 {}: {}，将使用当前目录",
-            backup_dir.display(),
-            err
+            "{}: {}, {}",
+            t!("utils.path.failed_to_create_backup_dir"),
+            err,
+            t!("utils.path.use_current_dir")
         );
         return PathBuf::from("./rdbkp2");
     }
 
-    tracing::debug!("使用备份目录：{}", backup_dir.display());
+    tracing::debug!("{}: {}", t!("utils.path.backup_dir"), backup_dir.display());
     backup_dir
 }
 

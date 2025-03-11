@@ -21,17 +21,21 @@ pub(super) fn require_admin_privileges_prompt() -> Result<()> {
         "❌ Please run as sudo user when restore the required container volume(s)."
     );
     let confirmed = Confirm::new()
-        .with_prompt("👌 Do you want to restart with sudo?")
+        .with_prompt(t!("prompt.require_admin_privileges_prompt"))
         .default(true)
         .interact()?;
 
     if !confirmed {
-        log_bail!("WARN", "⛔ Restore cancelled");
+        log_bail!("WARN", "{}", t!("prompt.restore_cancelled"));
     }
 
     restart_with_admin_privileges()?;
 
-    log_bail!("ERROR", "👿 error on requiring admin privileges")
+    log_bail!(
+        "ERROR",
+        "{}",
+        t!("prompt.error_on_require_admin_privileges")
+    )
 }
 
 pub(super) async fn select_container_prompt<T: DockerClientInterface>(
@@ -43,7 +47,10 @@ pub(super) async fn select_container_prompt<T: DockerClientInterface>(
 
     debug!("Displaying container selection prompt");
     let selection = Select::new()
-        .with_prompt(prompt_select("🐋 Select one container"))
+        .with_prompt(prompt_select(&format!(
+            "{}",
+            t!("prompt.select_container_prompt")
+        )))
         .items(&container_names)
         .default(0)
         .interact()?;
@@ -67,7 +74,10 @@ pub(super) async fn select_containers_prompt<T: DockerClientInterface>(
 
     debug!("Displaying container multi-selection prompt");
     let selections = MultiSelect::new()
-        .with_prompt(prompt_select("🐋 Select one or more containers"))
+        .with_prompt(prompt_select(&format!(
+            "{}",
+            t!("prompt.select_containers_prompt")
+        )))
         .items(&container_names)
         .defaults(&[true])
         .interact()?;
@@ -92,10 +102,10 @@ pub(super) fn select_volumes_prompt(volumes: &[VolumeInfo]) -> Result<Vec<Volume
     debug!("Displaying volume selection prompt");
 
     let selections = MultiSelect::new()
-        .with_prompt(prompt_select(
-            "   host ------------> container\n\
-            📃 Select one or more volume(s)",
-        ))
+        .with_prompt(prompt_select(&format!(
+            "{}",
+            t!("prompt.select_volumes_prompt")
+        )))
         .items(&volume_names)
         .defaults(&[true])
         .interact()?;
@@ -116,10 +126,10 @@ pub(super) fn select_volume_prompt(volumes: &[VolumeInfo]) -> Result<VolumeInfo>
         .collect();
 
     let selection = Select::new()
-        .with_prompt(prompt_select(
-            "   host -> container\n\
-            📃 Select one volume",
-        ))
+        .with_prompt(prompt_select(&format!(
+            "{}",
+            t!("prompt.select_volume_prompt")
+        )))
         .items(&volume_names)
         .default(0)
         .interact()?;

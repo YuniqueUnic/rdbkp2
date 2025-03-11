@@ -64,11 +64,11 @@ impl DockerClient {
     pub fn global() -> Result<ClientType> {
         let client_arc_lock = DOCKER_CLIENT_INSTANCE
             .get()
-            .ok_or_else(|| anyhow::anyhow!("Docker client not initialized"))?;
+            .ok_or_else(|| anyhow::anyhow!(t!("docker.client_not_initialized")))?;
 
         let client_read_guard = client_arc_lock
             .read()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire read lock on Docker client: {}", e))?;
+            .map_err(|e| anyhow::anyhow!(t!("docker.failed_to_acquire_read_lock", "error" = e)))?;
 
         Ok(client_read_guard.clone())
     }
@@ -287,11 +287,11 @@ impl DockerClientInterface for DockerClient {
             .await?;
         let config = status
             .config
-            .ok_or_else(|| anyhow::anyhow!("container config not found"))?;
+            .ok_or_else(|| anyhow::anyhow!(t!("docker.container_config_not_found")))?;
 
         let working_dir = config
             .working_dir
-            .ok_or_else(|| anyhow::anyhow!("container working dir not found"))?;
+            .ok_or_else(|| anyhow::anyhow!(t!("docker.container_working_dir_not_found")))?;
 
         Ok(working_dir)
     }
@@ -335,9 +335,9 @@ fn match_status(status: bollard::secret::ContainerInspectResponse) -> Result<Str
             Some(ContainerStateStatusEnum::RESTARTING) => Ok("restarting".to_string()),
             Some(ContainerStateStatusEnum::EXITED) => Ok("exited".to_string()),
             Some(ContainerStateStatusEnum::DEAD) => Ok("dead".to_string()),
-            _ => Err(anyhow::anyhow!("Container status not found")),
+            _ => Err(anyhow::anyhow!(t!("docker.container_status_not_found"))),
         },
-        None => Err(anyhow::anyhow!("Container status not found")),
+        None => Err(anyhow::anyhow!(t!("docker.container_status_not_found"))),
     }
 }
 

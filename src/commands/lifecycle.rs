@@ -29,9 +29,12 @@ pub async fn check_update() -> Result<()> {
         .header("User-Agent", format!("{}/{}", CRATE_NAME, current_version))
         .send()
         .await
-        .with_context(|| "无法连接到 crates.io")?;
+        .with_context(|| t!("lifecycle.can_not_connect_to_crates_io"))?;
 
-    let crate_info: CrateResponse = response.json().await.with_context(|| "无法解析版本信息")?;
+    let crate_info: CrateResponse = response
+        .json()
+        .await
+        .with_context(|| t!("lifecycle.can_not_parse_version_info"))?;
 
     // 找到最新的未被撤回的版本
     let latest_version = crate_info
@@ -39,24 +42,44 @@ pub async fn check_update() -> Result<()> {
         .iter()
         .filter(|v| !v.yanked)
         .next()
-        .ok_or_else(|| anyhow::anyhow!("未找到可用版本"))?;
+        .ok_or_else(|| anyhow::anyhow!(t!("lifecycle.no_available_version")))?;
 
     let latest_version = Version::parse(&latest_version.num)?;
 
     if latest_version > current_version {
         log_println!(
             "INFO",
-            "发现新版本：{} (当前版本：{})",
-            latest_version,
-            current_version
+            "{}",
+            format!(
+                "{} ({})",
+                t!(
+                    "lifecycle.new_version_found",
+                    "latest_version" = latest_version
+                ),
+                t!(
+                    "lifecycle.current_version",
+                    "current_version" = current_version
+                )
+            )
         );
         log_println!(
             "INFO",
-            "运行以下命令更新：\n  cargo install {} --force",
-            CRATE_NAME
+            "{}",
+            format!(
+                "{} (cargo install {} --force)",
+                t!("lifecycle.update_command"),
+                CRATE_NAME
+            )
         );
     } else {
-        log_println!("INFO", "当前已是最新版本：{}", current_version);
+        log_println!(
+            "INFO",
+            "{}",
+            t!(
+                "lifecycle.current_version",
+                "current_version" = current_version
+            )
+        );
     }
 
     Ok(())
@@ -66,13 +89,18 @@ pub async fn check_update() -> Result<()> {
 pub async fn uninstall() -> Result<()> {
     // 1. 删除符号链接
     if let Err(e) = symbollink::remove_symbollink() {
-        log_println!("WARN", "删除符号链接失败：{}", e);
+        log_println!(
+            "WARN",
+            "{}",
+            t!("lifecycle.remove_symbollink_failed", "error" = e)
+        );
     }
 
     // 2. 提示用户如何完成卸载
     log_println!(
         "INFO",
-        "符号链接已删除，请运行以下命令完成卸载：\n  cargo uninstall {}",
+        "{} (cargo uninstall {})",
+        t!("lifecycle.uninstall_command"),
         CRATE_NAME
     );
 

@@ -16,7 +16,10 @@ use tracing_subscriber::{EnvFilter, fmt};
 #[macro_use]
 extern crate rust_i18n;
 
-rust_i18n::i18n!("locales", fallback = ["en", "ja", "ko", "es"]);
+rust_i18n::i18n!(
+    "locales",
+    fallback = ["en", "ja", "ko", "es", "fr", "de", "it"]
+);
 
 #[allow(unused)]
 pub(crate) const DOCKER_CMD: &str = "docker";
@@ -271,7 +274,7 @@ pub async fn run() -> Result<()> {
     rust_i18n::set_locale(&language);
     #[cfg(debug_assertions)]
     {
-        println!("1. langugage:{}", t!("language.zh-CN"));
+        println!("1. langugage:{}", t!("language"));
         println!("2. langugage:{}", t!("language.en"));
         println!("3. langugage:{}", t!("language.ja"));
         println!("3. langugage:{}", t!("language"));

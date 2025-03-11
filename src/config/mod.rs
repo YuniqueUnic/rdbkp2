@@ -102,11 +102,11 @@ impl Config {
     pub fn global() -> Result<Config> {
         let config_lock = CONFIG
             .get()
-            .ok_or_else(|| anyhow::anyhow!("Config not initialized"))?;
+            .ok_or_else(|| anyhow::anyhow!(t!("config.initialize_failed")))?;
 
         let config = config_lock.read().map_err(|e| {
             error!(?e, "Failed to acquire read lock on config");
-            anyhow::anyhow!("Failed to read config: {}", e)
+            anyhow::anyhow!(t!("config.load_failed"))
         })?;
 
         Ok(config.clone().unwrap_or_default())
@@ -117,7 +117,7 @@ impl Config {
         let res = CONFIG.set(Arc::new(RwLock::new(Some(config))));
         if res.is_err() {
             error!("Failed to set config");
-            anyhow::bail!("Failed to set config")
+            anyhow::bail!(t!("config.set_failed"))
         }
         debug!("Global config initialized");
         Ok(())
