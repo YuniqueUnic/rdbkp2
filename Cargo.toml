@@ -52,6 +52,8 @@ dirs = "6.0.0"
 semver = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 rust-i18n = "3.1.3"
+# OpenSSL
+openssl-sys = { version = "0.9", features = ["vendored"] }
 
 # 针对 Linux 的依赖
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -73,13 +75,12 @@ runas = "1.2.0"
 
 
 [profile.release]
-lto = true
+lto = "thin"
 codegen-units = 1
-panic = 'abort'
-version = "*"
-# strip = true  # Removed due to unexpected property error
-# End of Selection
+panic = "abort"
 opt-level = 3
+strip = true
+# End of Selection
 
 [dev-dependencies]
 # 测试

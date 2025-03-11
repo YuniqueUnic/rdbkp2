@@ -13,6 +13,8 @@ env:
   CARGO_TERM_COLOR: always
   RUST_LOG: info
   BINARY_NAME: rdbkp2
+  OPENSSL_STATIC: true
+  PKG_CONFIG_ALLOW_CROSS: true
 jobs:
   test:
     name: Test
@@ -28,28 +30,39 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy, rustfmt
+
       # Install OpenSSL on Ubuntu
       - name: Install OpenSSL (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+
       # Install OpenSSL on macOS
       - name: Install OpenSSL (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install openssl@3
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
+
       - name: Check formatting
         run: cargo fmt -- --check
-      # - name: Clippy
-      #   run: cargo clippy -- -D warnings
+
       - name: Run tests
         run: cargo test --verbose
+
       - name: Build
         run: cargo build --verbose
+
   build-release:
     name: Build Release
     needs: [test]
@@ -80,68 +93,59 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      
-      # Install OpenSSL for Linux builds (for non-cross builds)
-      - name: Install OpenSSL (Ubuntu)
-        if: runner.os == 'Linux'
+
+      # Add vendored OpenSSL configuration to Cargo.toml
+      - name: Configure vendored OpenSSL
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-      
-      # Install dependencies for macOS builds
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          # Install OpenSSL
-          brew install openssl@3
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          
-          # For x86_64 target on macOS
-          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
-            # Remove existing xz if any
-            brew uninstall xz || true
-            
-            # Install xz with both architectures
-            arch -x86_64 brew install --build-from-source xz
-            
-            # Set environment variables
-            echo "LZMA_API_STATIC=1" >> $GITHUB_ENV
-            echo "XZ_STATIC=1" >> $GITHUB_ENV
-            echo "PKG_CONFIG_PATH=/usr/local/opt/xz/lib/pkgconfig" >> $GITHUB_ENV
-          fi
-      
-      - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross
-      
-      # Configure static linking for macOS x86_64
-      - name: Configure static linking for macOS x86_64
-        if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
-        run: |
-          # Create .cargo/config.toml for static linking
-          mkdir -p .cargo
-          cat > .cargo/config.toml << EOF
-          [target.x86_64-apple-darwin]
-          rustflags = ["-C", "link-arg=-arch", "-C", "link-arg=x86_64"]
-          
-          [build]
-          rustflags = ["-C", "target-feature=+crt-static"]
-          EOF
-          
-          # Add static linking configuration to Cargo.toml
           echo '
           [dependencies.openssl-sys]
           version = "*"
           features = ["vendored"]' >> Cargo.toml
-      
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Install cross-compilation tools for Linux
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y musl-tools
+
+      # Install dependencies for macOS builds
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+          
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            brew uninstall xz || true
+            arch -x86_64 brew install --build-from-source xz
+            echo "LZMA_API_STATIC=1" >> $GITHUB_ENV
+            echo "XZ_STATIC=1" >> $GITHUB_ENV
+            echo "PKG_CONFIG_PATH=/usr/local/opt/xz/lib/pkgconfig" >> $GITHUB_ENV
+          fi
+
+      # Configure cross-compilation environment
+      - name: Configure cross-compilation
+        if: matrix.use_cross
+        run: |
+          mkdir -p .cargo
+          echo '[target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          [target.x86_64-unknown-linux-gnu]
+          rustflags = ["-C", "target-feature=+crt-static"]' > .cargo/config.toml
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross
+
       - name: Build binary
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
@@ -151,9 +155,11 @@ jobs:
           fi
         shell: bash
         env:
-          OPENSSL_STATIC: 1
-          PKG_CONFIG_ALLOW_CROSS: 1
-      
+          OPENSSL_STATIC: true
+          PKG_CONFIG_ALLOW_CROSS: true
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          RUSTFLAGS: "-C target-feature=+crt-static"
+
       - name: Prepare binary
         shell: bash
         run: |
@@ -162,13 +168,13 @@ jobs:
           else
             cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
           fi
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
           path: ${{ env.BINARY_NAME }}-${{ matrix.suffix }}
-  
+
   create-release:
     name: Create Release
     needs: [build-release]

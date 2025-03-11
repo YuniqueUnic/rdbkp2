@@ -272,13 +272,13 @@ pub async fn run() -> Result<()> {
     let verbose = cli.verbose;
     let language: String = cli.language.into();
     rust_i18n::set_locale(&language);
-    #[cfg(debug_assertions)]
-    {
-        println!("1. langugage:{}", t!("language"));
-        println!("2. langugage:{}", t!("language.en"));
-        println!("3. langugage:{}", t!("language.ja"));
-        println!("3. langugage:{}", t!("language"));
-    }
+    // #[cfg(debug_assertions)]
+    // {
+    //     println!("1. langugage:{}", t!("language"));
+    //     println!("2. langugage:{}", t!("language.en"));
+    //     println!("3. langugage:{}", t!("language.ja"));
+    //     println!("3. langugage:{}", t!("language"));
+    // }
 
     // 初始化全局 runtime 配置
     init_config(
