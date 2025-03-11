@@ -13,6 +13,11 @@ use std::io;
 use tracing::{Level, info, instrument};
 use tracing_subscriber::{EnvFilter, fmt};
 
+#[macro_use]
+extern crate rust_i18n;
+
+rust_i18n::i18n!("locales", fallback = ["en", "ja", "ko", "es"]);
+
 #[allow(unused)]
 pub(crate) const DOCKER_CMD: &str = "docker";
 
@@ -53,6 +58,10 @@ struct Cli {
     /// 是否显示详细日志 [default: false]
     #[arg(global = true, short, long, default_value = "false")]
     verbose: bool,
+
+    /// 设置语言 [default: Cn]
+    #[arg(global = true, short, long, default_value = "Cn", value_enum)]
+    language: Language,
 }
 
 #[derive(Clone, ValueEnum, Debug)]
@@ -61,6 +70,33 @@ enum Shell {
     Fish,
     Zsh,
     PowerShell,
+}
+
+#[derive(Clone, ValueEnum, Debug)]
+enum Language {
+    Cn,
+    En,
+    Ja,
+    Ko,
+    Es,
+    Fr,
+    De,
+    It,
+}
+
+impl From<Language> for String {
+    fn from(language: Language) -> Self {
+        match language {
+            Language::Cn => "zh-CN".to_string(),
+            Language::En => "en".to_string(),
+            Language::Ja => "ja".to_string(),
+            Language::Ko => "ko".to_string(),
+            Language::Es => "es".to_string(),
+            Language::Fr => "fr".to_string(),
+            Language::De => "de".to_string(),
+            Language::It => "it".to_string(),
+        }
+    }
 }
 
 impl Into<clap_complete::aot::Shell> for Shell {
@@ -175,6 +211,7 @@ fn init_config(
     verbose: bool,
     yes: bool,
     exclude: String,
+    language: String,
 ) -> Result<()> {
     let mut cfg = config::Config::default();
     cfg.timeout_secs = timeout_secs;
@@ -183,6 +220,7 @@ fn init_config(
     cfg.verbose = verbose;
     cfg.yes = yes;
     cfg.exclude = exclude;
+    cfg.language = language;
     config::Config::init(cfg)?;
     Ok(())
 }
@@ -229,9 +267,23 @@ pub async fn run() -> Result<()> {
     let exclude = cli.exclude;
     let yes = cli.yes;
     let verbose = cli.verbose;
+    let language: String = cli.language.into();
+    rust_i18n::set_locale(&language);
+    #[cfg(debug_assertions)]
+    {
+        println!("语言：{}", t!("language"));
+    }
 
     // 初始化全局 runtime 配置
-    init_config(timeout, interactive, restart, verbose, yes, exclude)?;
+    init_config(
+        timeout,
+        interactive,
+        restart,
+        verbose,
+        yes,
+        exclude,
+        language,
+    )?;
 
     // 设置日志级别，初始化全局日志
     let log_level = if verbose { Level::DEBUG } else { Level::ERROR };

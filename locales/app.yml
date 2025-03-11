@@ -1,0 +1,20 @@
+_version: 2
+
+language:
+  en: language
+  zh-CN: 语言
+  ja: 言語
+  ko: 언어
+  es: idioma
+  fr: langue
+  de: sprache
+  it: lingua
+backup_out_dir_prompt:
+  en: "💾 Please backup the output directory: "
+  zh-CN: "💾 请备份输出目录："
+  ja: "💾 出力ディレクトリをバックアップしてください："
+  ko: "💾 출력 디렉토리를 백업하세요："
+  es: "💾 Por favor, respalda el directorio de salida:"
+  fr: "💾 Veuillez sauvegarder le répertoire de sortie:"
+  de: "💾 Bitte sichern Sie den Ausgabeverzeichnis:"
+  it: "💾 Per favore, salva il direttorio di output:"

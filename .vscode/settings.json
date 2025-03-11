@@ -8,5 +8,9 @@
         "walkdir",
         "winapi",
         "winerror"
-    ]
+    ],
+    "i18n-ally.localesPaths": [
+        "locales"
+    ],
+    "i18n-ally.sourceLanguage": "app"
 }

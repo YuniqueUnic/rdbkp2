@@ -56,6 +56,9 @@ pub struct Config {
     /// 排除模式：备份时将排除包含这些模式的文件/目录
     pub exclude: String,
 
+    /// 语言
+    pub language: String,
+
     /// Docker 相关配置
     pub docker: DockerConfig,
 }
@@ -83,6 +86,7 @@ impl Default for Config {
             verbose: false,
             yes: false,
             exclude: ".git,node_modules,target".to_string(),
+            language: "zh-CN".to_string(),
             docker: DockerConfig {
                 host: "unix:///var/run/docker.sock".to_string(),
                 tls: false,
