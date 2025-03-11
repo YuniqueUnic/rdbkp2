@@ -113,31 +113,11 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross
       
-      # 修改 Cargo.toml 以使用 vendored 特性
-      - name: Configure OpenSSL vendored feature
-        if: matrix.use_cross
-        run: |
-          # 添加 openssl-sys 的 vendored 特性到 Cargo.toml
-          echo '
-          [dependencies.openssl-sys]
-          version = "*"
-          features = ["vendored"]' >> Cargo.toml
-      
-      # Add static linking for xz2 on macOS x86_64
-      - name: Configure static linking for xz2
+      # Configure static linking for xz2 and other dependencies on macOS x86_64
+      - name: Configure static linking for macOS x86_64
         if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
         run: |
-          # Add static linking configuration to Cargo.toml
-          echo '
-          [dependencies.xz2]
-          version = "0.1.7"
-          features = ["static"]' >> Cargo.toml
-      
-      # Add vendored feature for all dependencies that support it
-      - name: Configure vendored features for macOS x86_64
-        if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
-        run: |
-          # Create a .cargo/config.toml file to enable static linking
+          # Create .cargo/config.toml for static linking
           mkdir -p .cargo
           cat > .cargo/config.toml << EOF
           [target.x86_64-apple-darwin]
@@ -146,6 +126,16 @@ jobs:
           [build]
           rustflags = ["-C", "target-feature=+crt-static"]
           EOF
+          
+          # Add static linking configuration to Cargo.toml
+          echo '
+          [dependencies.xz2]
+          version = "0.1.7"
+          features = ["static"]
+          
+          [dependencies.openssl-sys]
+          version = "*"
+          features = ["vendored"]' >> Cargo.toml
       
       - name: Build binary
         run: |
