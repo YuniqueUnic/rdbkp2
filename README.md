@@ -135,14 +135,15 @@ Add the following line to your PowerShell profile:
 
 ### Common Arguments
 
-| Argument             | Description                      | Default Value                      |
-|----------------------|----------------------------------|------------------------------------|
-| `-y, --yes`          | Automatic confirmation prompt    | `false`                            |
-| `-i, --interactive`  | Use interactive mode             | `true`                             |
-| `-v, --verbose`      | Display detailed logs            | `false`                            |
-| `-t, --timeout`      | Container stop timeout (seconds) | `30`                               |
-| `-e, --exclude`      | Exclusion patterns               | `".git,node_modules,target"`       |
-| `-r, --restart`      | Restart container after operation| `false`                            |
+| Argument             | Description                            | Default Value                      |
+|----------------------|----------------------------------------|------------------------------------|
+| `-y, --yes`          | Automatic confirmation prompt          | `false`                            |
+| `-i, --interactive`  | Use interactive mode                   | `true`                             |
+| `-v, --verbose`      | Display detailed logs                  | `false`                            |
+| `-t, --timeout`      | Container stop timeout (seconds)       | `30`                               |
+| `-e, --exclude`      | Exclusion patterns                     | `".git,node_modules,target"`       |
+| `-r, --restart`      | Restart container after operation      | `false`                            |
+| `-l, --lang`         | Language (zh-CN/en/ja/ko/es/fr/de/it)  | `zh-CN`                            |
 
 ### Backup Command (`backup`)
 
@@ -157,6 +158,7 @@ Add the following line to your PowerShell profile:
 | `-r, --restart`      | Restart the container after operation            |
 | `-t, --timeout`      | Timeout for stopping the container (seconds)     |
 | `-e, --exclude`      | Exclusion patterns                               |
+| `-l, --lang`         | Language (zh-CN/en/ja/ko/es/fr/de/it)            |
 
 ### Restore Command (`restore`)
 
@@ -175,6 +177,7 @@ Add the following line to your PowerShell profile:
 | `-r, --restart`      | Restart container after operation                |
 | `-t, --timeout`      | Container stop timeout (seconds)                 |
 | ~~`-e, --exclude`~~  | ~~Exclude patterns~~                             |
+| `-l, --lang`         | Language (zh-CN/en/ja/ko/es/fr/de/it)            |
 
 ### List Command (`list`)
 
@@ -193,6 +196,7 @@ No arguments. Displays all available containers.
 |----------------------|--------------------------------------------------|
 |                      | Inherited from common arguments                  |
 | `-y, --yes`          | Automatic confirmation prompt                    |
+| `-l, --lang`         | Language (zh-CN/en/ja/ko/es/fr/de/it)            |
 
 ## Important Notes
 
