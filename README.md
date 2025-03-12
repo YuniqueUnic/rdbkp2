@@ -206,3 +206,43 @@ No arguments. Displays all available containers.
 3.  It is recommended to back up your current data before restoring.
 4.  You need to have permissions to access the Docker daemon.
 5.  Windows users need to ensure Docker Desktop is running.
+
+## Acknowledgments
+
+| Library Name       | Version   | Purpose Description                                                         | Link                                      |
+|--------------------|-----------|-----------------------------------------------------------------------------|-------------------------------------------|
+| **clap**           | 4.5.1     | CLI argument parsing and construction                                       | [Crates.io](https://crates.io/crates/clap) |
+| **dialoguer**      | 0.11.0    | CLI interactive dialogue tool                                               | [Crates.io](https://crates.io/crates/dialoguer) |
+| **bollard**        | 0.18      | Docker API client (supports SSL)                                            | [Crates.io](https://crates.io/crates/bollard) |
+| **toml**           | 0.8.10    | TOML format configuration file parsing                                      | [Crates.io](https://crates.io/crates/toml) |
+| **serde**          | 1.0       | Data serialization/deserialization (with derive support)                    | [Crates.io](https://crates.io/crates/serde) |
+| **tar**            | 0.4.40    | TAR compression/decompression                                               | [Crates.io](https://crates.io/crates/tar) |
+| **xz2**            | 0.1.7     | XZ compression/decompression                                                | [Crates.io](https://crates.io/crates/xz2) |
+| **anyhow**         | 1.0.80    | Error handling and propagation                                              | [Crates.io](https://crates.io/crates/anyhow) |
+| **thiserror**      | 2         | Custom error type definition                                                | [Crates.io](https://crates.io/crates/thiserror) |
+| **tokio**          | 1.44      | Asynchronous runtime (with full features)                                   | [Crates.io](https://crates.io/crates/tokio) |
+| **tracing**        | 0.1.40    | Log tracing system                                                          | [Crates.io](https://crates.io/crates/tracing) |
+| **tracing-subscriber** | 0.3.18 | Log subscription and formatting (with environment filtering)                | [Crates.io](https://crates.io/crates/tracing-subscriber) |
+| **walkdir**        | 2.4.0     | File system traversal                                                       | [Crates.io](https://crates.io/crates/walkdir) |
+| **chrono**         | 0.4.34    | Date and time handling                                                      | [Crates.io](https://crates.io/crates/chrono) |
+| **tempfile**       | 3.18      | Temporary file operations                                                   | [Crates.io](https://crates.io/crates/tempfile) |
+| **fs_extra**       | 1.3.0     | File system extended operations                                             | [Crates.io](https://crates.io/crates/fs_extra) |
+| **dunce**          | 1.0.5     | File path normalization                                                     | [Crates.io](https://crates.io/crates/dunce) |
+| **mockall**        | 0.13.1    | Unit test mocking tool                                                      | [Crates.io](https://crates.io/crates/mockall) |
+| **privilege**      | 0.3.0     | Privilege management (for Windows privilege elevation)                      | [Crates.io](https://crates.io/crates/privilege) |
+| **dirs**           | 6.0.0     | System directory path retrieval                                             | [Crates.io](https://crates.io/crates/dirs) |
+| **semver**         | 1.0       | Semantic version parsing                                                    | [Crates.io](https://crates.io/crates/semver) |
+| **reqwest**        | 0.12      | HTTP request client (with JSON support)                                     | [Crates.io](https://crates.io/crates/reqwest) |
+| **rust-i18n**      | 3.1.3     | Internationalization and localization support                               | [Crates.io](https://crates.io/crates/rust-i18n) |
+| **runas**          | 1.2.0     | Windows command execution with elevated privileges (Windows-only)           | [Crates.io](https://crates.io/crates/runas) |
+
+### Notes:
+1. **Platform-Specific Dependencies**:
+   - `runas` is Windows-only; other libraries are cross-platform (Linux/macOS/Windows).
+
+2. **Performance Optimization**:
+   - `strip = true`: Removes debug symbols in release builds to reduce binary size.
+   - `lto = "thin"` and `opt-level = 3`: Enables Link-Time Optimization (LTO) and maximum optimization level.
+
+3. **Acknowledgements**:
+   Special thanks to these open-source projects for providing foundational support to `rdbkp2`!

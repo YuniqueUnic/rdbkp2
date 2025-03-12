@@ -206,3 +206,44 @@ Fish shell 会自动加载 `~/.config/fish/completions` 目录下的补全脚本
 2. 建议在恢复数据之前先备份当前数据
 3. 需要有访问 Docker daemon 的权限
 4. Windows 用户需要确保 Docker Desktop 已启动
+
+## 致谢
+
+| 库名               | 版本      | 用途描述                                                                 | 链接                                      |
+|--------------------|-----------|--------------------------------------------------------------------------|-------------------------------------------|
+| **clap**           | 4.5.1     | CLI 参数解析与构建                                                       | [Crates.io](https://crates.io/crates/clap) |
+| **dialoguer**      | 0.11.0    | CLI 交互式对话工具                                                       | [Crates.io](https://crates.io/crates/dialoguer) |
+| **bollard**        | 0.18      | Docker API 客户端（支持SSL）                                             | [Crates.io](https://crates.io/crates/bollard) |
+| **toml**           | 0.8.10    | TOML 格式配置文件解析                                                   | [Crates.io](https://crates.io/crates/toml) |
+| **serde**          | 1.0       | 数据序列化/反序列化（带derive支持）                                      | [Crates.io](https://crates.io/crates/serde) |
+| **tar**            | 0.4.40    | TAR 压缩/解压                                                           | [Crates.io](https://crates.io/crates/tar) |
+| **xz2**            | 0.1.7     | XZ 压缩/解压                                                            | [Crates.io](https://crates.io/crates/xz2) |
+| **anyhow**         | 1.0.80    | 错误处理与传播                                                         | [Crates.io](https://crates.io/crates/anyhow) |
+| **thiserror**      | 2         | 自定义错误类型                                                         | [Crates.io](https://crates.io/crates/thiserror) |
+| **tokio**          | 1.44      | 异步运行时（带full特性）                                                | [Crates.io](https://crates.io/crates/tokio) |
+| **tracing**        | 0.1.40    | 日志追踪系统                                                           | [Crates.io](https://crates.io/crates/tracing) |
+| **tracing-subscriber** | 0.3.18 | 日志订阅与格式化（带环境过滤）                                         | [Crates.io](https://crates.io/crates/tracing-subscriber) |
+| **walkdir**        | 2.4.0     | 文件系统遍历                                                           | [Crates.io](https://crates.io/crates/walkdir) |
+| **chrono**         | 0.4.34    | 日期与时间处理                                                         | [Crates.io](https://crates.io/crates/chrono) |
+| **tempfile**       | 3.18      | 临时文件操作                                                           | [Crates.io](https://crates.io/crates/tempfile) |
+| **fs_extra**       | 1.3.0     | 文件系统扩展操作                                                       | [Crates.io](https://crates.io/crates/fs_extra) |
+| **dunce**          | 1.0.5     | 文件路径规范化                                                         | [Crates.io](https://crates.io/crates/dunce) |
+| **mockall**        | 0.13.1    | 单元测试 Mock 工具                                                     | [Crates.io](https://crates.io/crates/mockall) |
+| **privilege**      | 0.3.0     | 权限管理（用于Windows提权）                                             | [Crates.io](https://crates.io/crates/privilege) |
+| **dirs**           | 6.0.0     | 系统目录路径获取                                                       | [Crates.io](https://crates.io/crates/dirs) |
+| **semver**         | 1.0       | 语义化版本解析                                                         | [Crates.io](https://crates.io/crates/semver) |
+| **reqwest**        | 0.12      | HTTP 请求客户端（带JSON支持）                                           | [Crates.io](https://crates.io/crates/reqwest) |
+| **rust-i18n**      | 3.1.3     | 国际化与本地化支持                                                     | [Crates.io](https://crates.io/crates/rust-i18n) |
+| **runas**          | 1.2.0     | Windows 提权运行命令（仅限Windows平台）                                 | [Crates.io](https://crates.io/crates/runas) |
+
+### 说明：
+1. **平台特定依赖**：
+   - `runas` 仅用于 Windows 平台，其他平台无特殊依赖。
+   - 其他库为通用依赖，支持跨平台（Linux/macOS/Windows）。
+
+2. **性能优化**：
+   - `strip = true`：在发布版本中移除调试符号，减小二进制体积。
+   - `lto = "thin"` 和 `opt-level = 3`：启用链接时优化（LTO）和最高优化级别。
+
+3. **致谢**：
+   感谢以上开源项目为 `rdbkp2` 提供的基础设施支持！

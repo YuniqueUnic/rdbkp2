@@ -11,10 +11,10 @@ fn confirm_action(prompt: &str) -> Result<bool> {
         .with_prompt(prompt)
         .default(false)
         .interact()
-        .with_context(|| "用户输入错误")?;
+        .with_context(|| t!("symbollink.user_input_error"))?;
 
     if !ensure {
-        log_println!("INFO", "操作已取消");
+        log_println!("INFO", "{}", t!("symbollink.action_cancelled"));
     }
     Ok(ensure)
 }
@@ -27,14 +27,28 @@ fn check_path_status(path: &Path, force: bool, is_create: bool) -> Result<bool> 
 
     if !force {
         let is_symlink = path.is_symlink();
-        let action = if is_create { "创建" } else { "删除" };
-        let prompt = if is_symlink {
-            format!("🤔 已存在符号链接，是否继续{}？", action)
+        let action = if is_create {
+            t!("symbollink.create")
         } else {
-            format!("🤔 目标不是符号链接，是否继续{}？", action)
+            t!("symbollink.remove")
+        };
+        let prompt = if is_symlink {
+            format!(
+                "{}，{} {}？",
+                t!("symbollink.already_exists"),
+                t!("symbollink.confirm_action"),
+                action
+            )
+        } else {
+            format!(
+                "{}，{} {}？",
+                t!("symbollink.not_symlink"),
+                t!("symbollink.confirm_action"),
+                action
+            )
         };
 
-        tracing::debug!("🤔 路径状态检查：{}", prompt);
+        tracing::debug!("{}：{}", t!("symbollink.path_status_check"), prompt);
         return confirm_action(&prompt);
     }
 
@@ -53,7 +67,15 @@ pub(crate) fn create_symbollink() -> Result<()> {
 
     // 确保父目录存在
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("无法创建目录 {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "{}",
+                t!(
+                    "symbollink.failed_to_create_directory",
+                    "directory" = parent.display()
+                )
+            )
+        })?;
     }
 
     let current_exe = std::env::current_exe()?;
@@ -66,9 +88,24 @@ pub(crate) fn create_symbollink() -> Result<()> {
             SYMBOLINK_PATH,
         ])
         .run()
-        .with_context(|| format!("创建符号链接 {} 失败", SYMBOLINK_PATH))?;
+        .with_context(|| {
+            format!(
+                "{}",
+                t!(
+                    "symbollink.failed_to_create_symbollink",
+                    "path" = SYMBOLINK_PATH
+                )
+            )
+        })?;
 
-    log_println!("INFO", "成功创建符号链接于 {}", SYMBOLINK_PATH);
+    log_println!(
+        "INFO",
+        "{}",
+        t!(
+            "symbollink.success_create_symbollink",
+            "path" = SYMBOLINK_PATH
+        )
+    );
     Ok(())
 }
 
@@ -78,7 +115,11 @@ pub(crate) fn remove_symbollink() -> Result<()> {
     let force = Config::global()?.yes;
 
     if !path.exists() {
-        log_println!("INFO", "符号链接不存在于 {}", SYMBOLINK_PATH);
+        log_println!(
+            "INFO",
+            "{}",
+            t!("symbollink.symbollink_not_exists", "path" = SYMBOLINK_PATH)
+        );
         return Ok(());
     }
 
@@ -91,8 +132,23 @@ pub(crate) fn remove_symbollink() -> Result<()> {
     privilege::runas::Command::new("rm")
         .args(&["-f", SYMBOLINK_PATH])
         .run()
-        .with_context(|| format!("删除 {} 失败", SYMBOLINK_PATH))?;
+        .with_context(|| {
+            format!(
+                "{}",
+                t!(
+                    "symbollink.failed_to_remove_symbollink",
+                    "path" = SYMBOLINK_PATH
+                )
+            )
+        })?;
 
-    log_println!("INFO", "成功删除符号链接 {}", SYMBOLINK_PATH);
+    log_println!(
+        "INFO",
+        "{}",
+        t!(
+            "symbollink.success_remove_symbollink",
+            "path" = SYMBOLINK_PATH
+        )
+    );
     Ok(())
 }

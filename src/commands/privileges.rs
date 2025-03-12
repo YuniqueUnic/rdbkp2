@@ -28,6 +28,11 @@ pub(super) fn restart_with_admin_privileges() -> Result<()> {
     let current_exe = std::env::current_exe()?;
     let args: Vec<String> = std::env::args().skip(1).collect();
 
+    #[cfg(debug_assertions)]
+    {
+        tracing::info!("restart with admin privileges: {}", args.join(" "));
+    }
+
     let mut cmd = privilege::runas::Command::new(current_exe);
 
     #[cfg(target_os = "windows")]
