@@ -212,6 +212,7 @@ No arguments. Displays all available containers.
 - The CLI now checks container state before issuing `docker stop`, so already-stopped containers no longer cause silent failures.
 - Graceful shutdowns poll Docker status with a bounded timeout and surface explicit feedback when a container cannot stop in time.
 - Restore workflows validate backup metadata before copying files and confirm destructive operations, ensuring unexpected archives are rejected.
+- Updated Docker client calls to the latest `bollard::query_parameters` API so builds stay warning-free and aligned with upstream changes.
 
 ## Acknowledgments
 

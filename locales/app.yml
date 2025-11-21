@@ -13,6 +13,7 @@ language:
 commands:
   available_containers:
     en: "Available containers"
+    zh: "可用容器"
     zh-CN: "可用容器"
     ja: "利用可能なコンテナ"
     ko: "사용 가능한 컨테이너"
@@ -22,6 +23,7 @@ commands:
     it: "Contenitori disponibili"
   container_name:
     en: "Name"
+    zh: "名称"
     zh-CN: "名称"
     ja: "名前"
     ko: "이름"
@@ -31,6 +33,7 @@ commands:
     it: "Nome"
   container_id:
     en: "ID"
+    zh: "ID"
     zh-CN: "ID"
     ja: "ID"
     ko: "ID"
@@ -40,6 +43,7 @@ commands:
     it: "ID"
   container_status:
     en: "Status"
+    zh: "状态"
     zh-CN: "状态"
     ja: "ステータス"
     ko: "상태"
@@ -49,6 +53,7 @@ commands:
     it: "Stato"
   no_containers_available:
     en: "No containers found"
+    zh: "未找到任何容器"
     zh-CN: "未找到任何容器"
     ja: "コンテナが見つかりません"
     ko: "컨테이너를 찾을 수 없습니다"
@@ -67,6 +72,7 @@ commands:
     it: "In esecuzione"
   attempt_to_stop_container:
     en: "Attempting to stop container %{container_name}"
+    zh: "尝试停止容器 %{container_name}"
     zh-CN: "尝试停止容器 %{container_name}"
     ja: "コンテナ %{container_name} を停止しようとしています"
     ko: "컨테이너 %{container_name} 을 중지하려고 합니다"
@@ -76,6 +82,7 @@ commands:
     it: "Tentativo di interrompere il contenitore %{container_name}"
   container_stopped:
     en: "Container stopped"
+    zh: "容器已停止"
     zh-CN: "容器已停止"
     ja: "コンテナが停止しました"
     ko: "컨테이너가 중지되었습니다"
@@ -103,6 +110,7 @@ commands:
     it: "Errore durante il recupero dello stato del contenitore %{name} %{error}"
   stop_container_failed:
     en: "Failed to stop container %{name} %{error}"
+    zh: "停止容器失败：%{name} %{error}"
     zh-CN: "停止容器失败：%{name} %{error}"
     ja: "コンテナを停止できませんでした：%{name} %{error}"
     ko: "컨테이너를 중지할 수 없습니다: %{name} %{error}"
@@ -112,6 +120,7 @@ commands:
     it: "Errore durante l'arresto del contenitore %{name} %{error}"
   stop_container_timeout:
     en: "Timeout while waiting for container %{name} to stop after %{timeout} seconds"
+    zh: "等待容器 %{name} 停止超时，等待时间：%{timeout} 秒"
     zh-CN: "等待容器 %{name} 停止超时，等待时间：%{timeout} 秒"
     ja: "コンテナ %{name} を停止するのに時間がかかりすぎました。%{timeout} 秒待っても停止しませんでした"
     ko: "컨테이너 %{name} 을 중지하는 데 시간이 너무 오래 걸렸습니다. %{timeout} 초 동안 기다렸지만 중지되지 않았습니다"
@@ -139,6 +148,7 @@ commands:
     it: "Contenitore %{name} ristartato"
   no_container_matched:
     en: "No container matched %{name}"
+    zh: "没有匹配的容器 %{name}"
     zh-CN: "没有匹配的容器 %{name}"
     ja: "一致するコンテナが見つかりません %{name}"
     ko: "일치하는 컨테이너가 없습니다 %{name}"
@@ -148,6 +158,7 @@ commands:
     it: "Nessun contenitore corrispondente trovato %{name}"
   please_enter_a_valid_container_name_or_id:
     en: "🪪 Please enter a valid container name or ID"
+    zh: "🪪 请输入有效的容器名称或 ID"
     zh-CN: "🪪 请输入有效的容器名称或 ID"
     ja: "🪪 有効なコンテナ名または ID を入力してください"
     ko: "🪪 유효한 컨테이너 이름 또는 ID 를 입력하세요"
@@ -157,6 +168,7 @@ commands:
     it: "🪪 Inserisci un nome di contenitore o un ID valido"
   multiple_matches_found:
     en: "🐋 Multiple matches found, please select one:"
+    zh: "🐋 多个匹配项，请选择一个："
     zh-CN: "🐋 多个匹配项，请选择一个："
     ja: "🐋 複数の一致が見つかりました。1 つを選択してください"
     ko: "🐋 여러 개의 일치 항목이 있습니다. 하나를 선택하세요"
@@ -166,6 +178,7 @@ commands:
     it: "🐋 Sono state trovate più corrispondenze. Per favore, seleziona una:"
   container_name_or_id_must_be_specified_in_non_interactive_mode:
     en: "Container name or ID must be specified in non-interactive mode"
+    zh: "容器名称或 ID 必须在非交互模式下指定"
     zh-CN: "容器名称或 ID 必须在非交互模式下指定"
     ja: "コンテナ名または ID は非対話モードで指定する必要があります"
     ko: "컨테이너 이름 또는 ID 는 비대화형 모드에서 지정해야 합니다"
