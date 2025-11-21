@@ -213,10 +213,8 @@ pub fn unpack_archive<P: AsRef<Path>>(archive_path: P, target_dir: P) -> Result<
         let path = entry.path()?;
         let target_path = target_dir.join(path);
 
-        if let Some(parent) = target_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = target_path.parent().filter(|p| !p.exists()) {
+            fs::create_dir_all(parent)?;
         }
 
         debug!(path = ?target_path, "Extracting file");

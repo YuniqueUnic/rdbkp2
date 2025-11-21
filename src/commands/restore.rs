@@ -10,7 +10,6 @@ use anyhow::Result;
 use dialoguer::{Confirm, Input, Select};
 use std::path::PathBuf;
 use tempfile::tempdir;
-use toml;
 use tracing::{info, warn};
 
 use super::privileges;
@@ -210,24 +209,23 @@ fn parse_restore_file(
                 created(b).cmp(&created(a))
             });
 
+            let file_labels = files
+                .iter()
+                .map(|f| {
+                    format!(
+                        "[{:<19}] {:<45}",
+                        utils::format_file_time(f).unwrap_or_else(|_| "Unknown".to_string()),
+                        f.file_name().unwrap_or_default().to_string_lossy()
+                    )
+                })
+                .collect::<Vec<_>>();
+
             let selection = Select::new()
                 .with_prompt(prompt::prompt_select(&format!(
                     "{}",
                     t!("commands.select_backup_file_to_restore")
                 )))
-                .items(
-                    &files
-                        .iter()
-                        .map(|f| {
-                            format!(
-                                "[{:<19}] {:<45}",
-                                utils::format_file_time(f)
-                                    .unwrap_or_else(|_| "Unknown".to_string()),
-                                f.file_name().unwrap_or_default().to_string_lossy()
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
+                .items(&file_labels)
                 .default(0)
                 .interact()?;
 

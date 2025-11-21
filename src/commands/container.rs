@@ -96,17 +96,17 @@ fn handle_multiple_matches(
         log_bail!("ERROR", "{}", t!("commands.multiple_matches_found"));
     }
 
+    let items = matches
+        .iter()
+        .map(|c| format!("{} ({})", c.name, c.id))
+        .collect::<Vec<_>>();
+
     let selection = Select::new()
         .with_prompt(prompt::prompt_select(&format!(
             "{}",
             t!("commands.multiple_matches_found")
         )))
-        .items(
-            &matches
-                .iter()
-                .map(|c| format!("{} ({})", c.name, c.id))
-                .collect::<Vec<_>>(),
-        )
+        .items(&items)
         .default(0)
         .interact()?;
 

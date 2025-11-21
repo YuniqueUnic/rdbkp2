@@ -10,7 +10,6 @@ use anyhow::Result;
 use chrono::Local;
 use dialoguer::Input;
 use std::path::PathBuf;
-use toml;
 use tracing::{debug, info};
 
 pub async fn backup(

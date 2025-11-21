@@ -112,7 +112,7 @@ pub const PROGRESS_BAR_WIDTH: usize = 30;
 macro_rules! print_progress {
     // 基本用法
     ($current:expr, $total:expr) => {
-        print_progress!($current, $total, crate::utils::out::PROGRESS_BAR_WIDTH, "")
+        print_progress!($current, $total, $crate::utils::out::PROGRESS_BAR_WIDTH, "")
     };
 
     // 指定宽度

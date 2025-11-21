@@ -40,8 +40,7 @@ pub async fn check_update() -> Result<()> {
     let latest_version = crate_info
         .versions
         .iter()
-        .filter(|v| !v.yanked)
-        .next()
+        .find(|v| !v.yanked)
         .ok_or_else(|| anyhow::anyhow!(t!("lifecycle.no_available_version")))?;
 
     let latest_version = Version::parse(&latest_version.num)?;

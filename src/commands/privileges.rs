@@ -117,26 +117,21 @@ pub(super) fn privileged_copy(from: &Path, to: &Path) -> Result<()> {
             }
 
             // 确保目标目录存在（对于文件复制）
-            if !is_dir {
-                if let Some(parent) = to.parent() {
-                    if !parent.exists() {
-                        // 创建父目录
-                        let mkdir_status = Command::new("sudo")
-                            .arg("mkdir")
-                            .arg("-p")
-                            .arg(parent)
-                            .status()
-                            .map_err(|e| {
-                                anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
-                            })?;
+            if !is_dir && let Some(parent) = to.parent().filter(|p| !p.exists()) {
+                let mkdir_status = Command::new("sudo")
+                    .arg("mkdir")
+                    .arg("-p")
+                    .arg(parent)
+                    .status()
+                    .map_err(|e| {
+                        anyhow::anyhow!("{}", t!("privileges.copy_failed", "error" = e))
+                    })?;
 
-                        if !mkdir_status.success() {
-                            return Err(anyhow::anyhow!(
-                                "{}",
-                                t!("privileges.copy_failed_parent_dir", "error" = "sudo mkdir")
-                            ));
-                        }
-                    }
+                if !mkdir_status.success() {
+                    return Err(anyhow::anyhow!(
+                        "{}",
+                        t!("privileges.copy_failed_parent_dir", "error" = "sudo mkdir")
+                    ));
                 }
             }
 

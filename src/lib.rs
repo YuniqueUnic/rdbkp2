@@ -67,6 +67,7 @@ struct Cli {
     language: Language,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, ValueEnum, Debug)]
 enum Shell {
     Bash,
@@ -102,9 +103,9 @@ impl From<Language> for String {
     }
 }
 
-impl Into<clap_complete::aot::Shell> for Shell {
-    fn into(self) -> clap_complete::aot::Shell {
-        match self {
+impl From<Shell> for clap_complete::aot::Shell {
+    fn from(value: Shell) -> Self {
+        match value {
             Shell::Bash => clap_complete::aot::Shell::Bash,
             Shell::Fish => clap_complete::aot::Shell::Fish,
             Shell::Zsh => clap_complete::aot::Shell::Zsh,
@@ -216,14 +217,16 @@ fn init_config(
     exclude: String,
     language: String,
 ) -> Result<()> {
-    let mut cfg = config::Config::default();
-    cfg.timeout_secs = timeout_secs;
-    cfg.interactive = interactive;
-    cfg.restart = restart;
-    cfg.verbose = verbose;
-    cfg.yes = yes;
-    cfg.exclude = exclude;
-    cfg.language = language;
+    let cfg = config::Config {
+        timeout_secs,
+        interactive,
+        restart,
+        verbose,
+        yes,
+        exclude,
+        language,
+        ..config::Config::default()
+    };
     config::Config::init(cfg)?;
     Ok(())
 }
@@ -331,12 +334,8 @@ async fn do_action(action: Commands) -> Result<()> {
             info!(?shell, "Generating shell completions");
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
-            clap_complete::generate(
-                clap_complete::aot::Shell::from(shell.into()),
-                &mut cmd,
-                &name,
-                &mut io::stdout(),
-            );
+            let generator: clap_complete::aot::Shell = shell.into();
+            clap_complete::generate(generator, &mut cmd, name, &mut io::stdout());
         }
         Commands::Update => {
             info!("Checking for updates");

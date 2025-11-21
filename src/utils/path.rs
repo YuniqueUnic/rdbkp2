@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsString,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -16,7 +17,7 @@ use crate::log_bail;
 /// 3. ./rdbkp2 (当前目录)
 pub(crate) fn get_default_backup_dir() -> PathBuf {
     let backup_dir = dirs::data_local_dir()
-        .or_else(|| dirs::home_dir())
+        .or_else(dirs::home_dir)
         .unwrap_or_else(|| {
             tracing::warn!("{}", t!("utils.path.failed_to_get_system_dir"));
             PathBuf::from(".")
@@ -150,11 +151,11 @@ pub(crate) fn ensure_absolute_canonical<P: AsRef<Path>>(
     };
 
     // 尝试规范化（解析符号链接）
-    match dunce::canonicalize(&absolute) {
+    match dunce::canonicalize(absolute) {
         Ok(canonical) => Ok(canonical),
         Err(_) => {
             // 路径不存在时，手动处理冗余部分
-            Ok(simplify_absolute_path(&absolute))
+            Ok(simplify_absolute_path(absolute))
         }
     }
 }
@@ -163,6 +164,7 @@ pub(crate) fn ensure_absolute_canonical<P: AsRef<Path>>(
 /// 简化绝对路径的冗余部分（不依赖文件系统存在性）
 fn simplify_absolute_path(path: &Path) -> PathBuf {
     let mut stack = Vec::new();
+    let separator = OsString::from(std::path::MAIN_SEPARATOR.to_string());
 
     for component in path.components() {
         match component {
@@ -172,10 +174,7 @@ fn simplify_absolute_path(path: &Path) -> PathBuf {
             }
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                if stack
-                    .last()
-                    .map_or(false, |s| *s != *std::path::MAIN_SEPARATOR.to_string())
-                {
+                if stack.last().is_some_and(|s| s != &separator) {
                     stack.pop();
                 }
             }

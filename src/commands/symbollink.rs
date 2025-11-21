@@ -79,14 +79,11 @@ pub(crate) fn create_symbollink() -> Result<()> {
     }
 
     let current_exe = std::env::current_exe()?;
+    let exe_path = current_exe.to_string_lossy().into_owned();
 
     // 创建符号链接
     privilege::runas::Command::new("ln")
-        .args(&[
-            "-sf",
-            &current_exe.to_string_lossy().to_string(),
-            SYMBOLINK_PATH,
-        ])
+        .args(&["-sf", &exe_path, SYMBOLINK_PATH])
         .run()
         .with_context(|| {
             format!(
