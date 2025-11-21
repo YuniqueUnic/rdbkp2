@@ -15,14 +15,14 @@ categories = ["command-line-utilities", "development-tools"]
 # 公共依赖，所有平台都会使用
 [dependencies]
 # CLI 参数解析
-clap = { version = "4.5.1", features = ["derive"] }
-clap_complete = "4.5.1"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 # CLI 交互
-dialoguer = "0.11.0"
+dialoguer = "0.12"
 # Docker API
-bollard = { version = "0.18", features = ["ssl"] }
+bollard = { version = "0.19", features = ["ssl"] }
 # 配置文件
-toml = "0.8.10"
+toml = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 # 压缩/解压
 tar = "0.4.40"
@@ -31,16 +31,16 @@ xz2 = "0.1.7"
 anyhow = "1.0.80"
 thiserror = "2"
 # 异步运行时
-tokio = { version = "1.44", features = ["full"] }
+tokio = { version = "1.48", features = ["full"] }
 # 日志
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 # 文件系统操作
 walkdir = "2.4.0"
 # 时间处理
-chrono = "0.4.34"
+chrono = "0.4"
 # 临时文件
-tempfile = "3.18"
+tempfile = "3"
 # 文件系统操作增强
 fs_extra = "1.3.0"
 # 文件系统路径操作
@@ -55,7 +55,7 @@ reqwest = { version = "0.12", features = [
     "blocking",
     "rustls-tls",
 ], default-features = false }
-rust-i18n = "3.1.3"
+rust-i18n = "3"
 # OpenSSL
 # 改用 rustls 替代 openssl, 避免交叉编译问题
 # openssl-sys = { version = "0.9", features = ["vendored"] }
