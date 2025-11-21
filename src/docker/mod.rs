@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use bollard::{
     Docker,
-    container::{InspectContainerOptions, ListContainersOptions},
+    container::{
+        InspectContainerOptions, ListContainersOptions, RestartContainerOptions,
+        StartContainerOptions, StopContainerOptions,
+    },
     secret::ContainerStateStatusEnum,
 };
 use mockall::{automock, predicate::*};
@@ -223,8 +226,9 @@ impl DockerClientInterface for DockerClient {
     async fn start_container(&self, container_id: &str) -> Result<()> {
         debug!("Starting container: {}", container_id);
 
+        let options: Option<StartContainerOptions<String>> = None;
         self.client
-            .start_container::<String>(container_id, None)
+            .start_container(container_id, options)
             .await
             .map_err(|e| {
                 error!(?e, "Failed to start container");
@@ -239,8 +243,9 @@ impl DockerClientInterface for DockerClient {
     async fn restart_container(&self, container_id: &str) -> Result<()> {
         debug!("Restarting container: {}", container_id);
 
+        let options: Option<RestartContainerOptions> = None;
         self.client
-            .restart_container(container_id, None)
+            .restart_container(container_id, options)
             .await
             .map_err(|e| {
                 error!(?e, "Failed to restart container");
@@ -255,8 +260,9 @@ impl DockerClientInterface for DockerClient {
     async fn stop_container(&self, container_id: &str) -> Result<()> {
         debug!("Stopping container: {}", container_id);
 
+        let options: Option<StopContainerOptions> = None;
         self.client
-            .stop_container(container_id, None)
+            .stop_container(container_id, options)
             .await
             .map_err(|e| {
                 error!(?e, "Failed to stop container");

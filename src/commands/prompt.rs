@@ -1,15 +1,27 @@
 use crate::{
-    commands::{
-        privileges::{has_admin_privileges, restart_with_admin_privileges},
-        prompt_select,
-    },
+    commands::privileges::{has_admin_privileges, restart_with_admin_privileges},
     docker::{ContainerInfo, DockerClientInterface, VolumeInfo},
     log_bail, log_println,
 };
 
 use anyhow::Result;
 use dialoguer::{Confirm, MultiSelect, Select};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{debug, info};
+
+static IS_FIRST_ACCESS: AtomicBool = AtomicBool::new(true);
+const PROMPT_SELECT_CONTAINER: &str = "💡 Press [arrow] keys to move  [↑↓]\n\
+✅   -   [space] to select     [√×]\n\
+👌   -   [enter] to confirm    [EN]\n\n";
+
+pub(crate) fn prompt_select(message: &str) -> String {
+    if IS_FIRST_ACCESS.load(Ordering::SeqCst) {
+        IS_FIRST_ACCESS.swap(false, Ordering::SeqCst);
+        format!("{}{}", PROMPT_SELECT_CONTAINER, message)
+    } else {
+        format!("{}{}", "[↑↓] [√×] [EN] [↑↓] [√×] [EN] [↑√E]\n", message)
+    }
+}
 
 pub(super) fn require_admin_privileges_prompt() -> Result<()> {
     if has_admin_privileges() {

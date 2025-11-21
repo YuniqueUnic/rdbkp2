@@ -47,6 +47,15 @@ commands:
     fr: "Statut"
     de: "Status"
     it: "Stato"
+  no_containers_available:
+    en: "No containers found"
+    zh-CN: "未找到任何容器"
+    ja: "コンテナが見つかりません"
+    ko: "컨테이너를 찾을 수 없습니다"
+    es: "No se encontraron contenedores"
+    fr: "Aucun conteneur trouvé"
+    de: "Keine Container gefunden"
+    it: "Nessun container trovato"
   container_status_running:
     en: "Running"
     zh-CN: "运行中"
