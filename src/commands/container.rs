@@ -243,7 +243,9 @@ fn print_container_table(containers: &[ContainerInfo]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::docker::{ContainerInfo, DockerClient};
+    use crate::docker::{ContainerInfo, DockerClient, MockDockerClientInterface};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[tokio::test]
     async fn skips_stopping_when_not_running() -> Result<()> {
@@ -260,6 +262,39 @@ mod tests {
         };
 
         ensure_container_stopped(&client, &container).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stops_running_container_until_status_changes() -> Result<()> {
+        let mut client = MockDockerClientInterface::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let status_counter = counter.clone();
+        client
+            .expect_get_container_status()
+            .times(2)
+            .returning(move |_| {
+                let call = status_counter.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    Ok("running".to_string())
+                } else {
+                    Ok("exited".to_string())
+                }
+            });
+        client
+            .expect_stop_container()
+            .times(1)
+            .returning(|_| Ok(()));
+        client.expect_get_stop_timeout_secs().returning(|| 2);
+
+        let container = ContainerInfo {
+            id: "id".into(),
+            name: "name".into(),
+            status: "running".into(),
+        };
+
+        ensure_container_stopped(&client, &container).await?;
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
         Ok(())
     }
 }

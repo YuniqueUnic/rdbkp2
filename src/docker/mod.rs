@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use bollard::{
     Docker,
-    container::{
-        InspectContainerOptions, ListContainersOptions, RestartContainerOptions,
+    query_parameters::{
+        InspectContainerOptions, ListContainersOptionsBuilder, RestartContainerOptions,
         StartContainerOptions, StopContainerOptions,
     },
     secret::ContainerStateStatusEnum,
@@ -114,10 +114,7 @@ impl DockerClientInterface for DockerClient {
     /// 列出所有容器
     async fn list_containers(&self) -> Result<Vec<ContainerInfo>> {
         debug!("Listing all containers");
-        let options = Some(ListContainersOptions::<String> {
-            all: true,
-            ..Default::default()
-        });
+        let options = Some(ListContainersOptionsBuilder::new().all(true).build());
 
         let containers = self.client.list_containers(options).await.map_err(|e| {
             error!(?e, "Failed to list containers");
@@ -226,7 +223,7 @@ impl DockerClientInterface for DockerClient {
     async fn start_container(&self, container_id: &str) -> Result<()> {
         debug!("Starting container: {}", container_id);
 
-        let options: Option<StartContainerOptions<String>> = None;
+        let options: Option<StartContainerOptions> = None;
         self.client
             .start_container(container_id, options)
             .await
