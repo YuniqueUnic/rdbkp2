@@ -207,6 +207,12 @@ No arguments. Displays all available containers.
 4.  You need to have permissions to access the Docker daemon.
 5.  Windows users need to ensure Docker Desktop is running.
 
+## Reliability Improvements
+
+- The CLI now checks container state before issuing `docker stop`, so already-stopped containers no longer cause silent failures.
+- Graceful shutdowns poll Docker status with a bounded timeout and surface explicit feedback when a container cannot stop in time.
+- Restore workflows validate backup metadata before copying files and confirm destructive operations, ensuring unexpected archives are rejected.
+
 ## Acknowledgments
 
 | Library Name       | Version   | Purpose Description                                                         | Link                                      |
